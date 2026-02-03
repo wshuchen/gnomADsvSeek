@@ -7,7 +7,7 @@
 # https://discuss.gnomad.broadinstitute.org/t/gnomad-copy-number-variants-bed-files/422
 wget https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/exome_cnv/gnomad.v4.1.cnv.all.bed
 
-## columns to be preserved. Strand was not included because of being "NA". 
+## Columns to keep. Strand was not included because of being "NA". 
 grep chrom gnomad.v4.1.cnv.all.bed | cut -f1-4,13,14,19,22,32,52 > cols
 echo "Selected columns of the genomAD CNVs file: "
 cat cols | sed "s/#//" 
@@ -15,7 +15,7 @@ cat cols | sed "s/#//"
 
 grep -v "#" gnomad.v4.1.cnv.all.bed |\
 	cut -f1-4,13,14,19,22,32,52 |\
-	# Remove "variant_is_" from the name.
+	# Remove "variant_is_80_" from the name.
 	sed "s/variant_is_80_//g" |\
 	# Some entries have "None" in gene symbol column. MANE gene names can be provided for some, 
 	# but they seem to not be included in gnomAD CNVs display, therefore they were removed.
@@ -30,7 +30,7 @@ echo -e "chrom\tstart\tend\tname\tlength\ttype\tgene\tsn\tsc\txx" > header
 cat header cnv_tmp > gnomADcnv
 
 # Clean up.
-rm cols header cnv_tmp #*.all.bed
+rm cols header cnv_tmp *.all.bed
 echo ""
 echo "Done."
 	
