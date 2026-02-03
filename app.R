@@ -27,7 +27,9 @@ ui <- page_sidebar(
         width = 300,
         HTML("Search gnomAD structure variant database for matching entries.<br>
                  <br>Deletion and duplication only.<br>
-                 <br>MANE and MANE Plus Clinical transcripts only."), 
+                 <br>MANE and MANE Plus Clinical transcripts only.<br>"),
+        HTML('<p>Visit app <a href="https://github.com/wshuchen/gnomADsvSeek"
+             target="_blank">GitHub repository</a></p>'),
         textInput("gene", markdown("**Gene name**"),
               value = "",
               placeholder = "TP53 OR tp53"),

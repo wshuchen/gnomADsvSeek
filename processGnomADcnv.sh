@@ -16,21 +16,21 @@ cat cols | sed "s/#//"
 grep -v "#" gnomad.v4.1.cnv.all.bed |\
 	cut -f1-4,13,14,19,22,32,52 |\
 	# Remove "variant_is_" from the name.
-	sed "s/variant_is_//g" |\
+	sed "s/variant_is_80_//g" |\
 	# Some entries have "None" in gene symbol column. MANE gene names can be provided for some, 
 	# but they seem to not be included in gnomAD CNVs display, therefore they were removed.
 	awk '$7 != "None"' |\
 	# Add 1 to start to be in GenBank style.
 	awk '$2 = $2 + 1' |\
 	# Shift the position of SN and SC to be the same as in SV file.
-	awk -v OFS="\t" '{print $1, $2, $3, $4, $5, $6, $7, $9, $10, $8}' \
+	awk -v OFS="\t" '{print $1, $2, $3, $4, $5, $6, $7, $9, $8, $10}' \
 	> cnv_tmp
 
 echo -e "chrom\tstart\tend\tname\tlength\ttype\tgene\tsn\tsc\txx" > header
 cat header cnv_tmp > gnomADcnv
 
 # Clean up.
-rm cols header cnv_tmp *.bed.gz
+rm cols header cnv_tmp #*.all.bed
 echo ""
 echo "Done."
 	
