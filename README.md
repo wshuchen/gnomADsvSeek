@@ -8,4 +8,5 @@ This is a R shiny app that allows a user to search gnomAD stucture variant data 
 
 ## App link
 On Posit Connect Cloud:  
-[gnomADsvSeek](https://019c1b5c-4372-aefb-ef0f-713709d4316f.share.connect.posit.cloud/)  
+[gnomADsvSeek](https://019c265e-dfa0-22ff-f9fb-af131e0838e0.share.connect.posit.cloud)  
+
