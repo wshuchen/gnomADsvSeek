@@ -143,18 +143,22 @@ server <- function(input, output, session) {
         # open in both ends (exon 1 and last exon), with strand consideration.
         if (input$boundary == "bound") {
             if (exon_from > 1) {
-                lower_bound = ifelse(gene_df$strand == "+",
-                                     gene_df$end[exon_from-1],
-                                     gene_df$start[exon_from-1])
-                lower_bound = lower_bound[1]
-                sv_found = sv_found[start(sv_found) >= lower_bound]
+                if (gene_df$strand[1] == "+") {
+                    lower_bound = gene_df$end[exon_from-1]
+                    sv_found = sv_found[start(sv_found) >= lower_bound[1]]
+                } else {
+                    lower_bound = gene_df$start[exon_from-1]
+                    sv_found = sv_found[end(sv_found) <= lower_bound[1]]
+                }
             }
             if (exon_to < max(gene_df$exon)) {
-                upper_bound = ifelse(gene_df$strand == "+",
-                                     gene_df$start[exon_to+1],
-                                     gene_df$end[exon_to+1])
-                upper_bound = upper_bound[1]
-                sv_found = sv_found[end(sv_found) <= upper_bound]
+                if (gene_df$strand[1] == "+") {
+                    upper_bound = gene_df$start[exon_to+1]
+                    sv_found = sv_found[end(sv_found) <= upper_bound[1]]
+                } else {
+                    upper_bound = gene_df$end[exon_to+1]
+                    sv_found = sv_found[start(sv_found) >= upper_bound[1]]
+                }           
             }
         }
         
@@ -166,7 +170,9 @@ server <- function(input, output, session) {
             mcols(sv_found)$frequency = format(sv_found$sc/sv_found$sn, 
                                                scientific = FALSE)
         }
-
+        # Name in uppercase in gnomAD browser
+        sv_found$name = toupper(sv_found$name) 
+        
         # Add gene symbol(s) to the data, so we know the gene(s) an interval overlaps.
         # This helps to see the actual match because we have both ends open.
         # Note that original SV BED file does not include gene symbol, while
@@ -279,7 +285,7 @@ server <- function(input, output, session) {
     })
     
     # Liftover may break a large interval into pieces with different gaps. 
-    # We would merge all pieces from a sv into one when that happens.
+    # We would merge all pieces from a sv into one (hopefully) when that happens.
     # We would also get rid of any pieces mapped to other chromosomes.
     observeEvent(input$genome == "hg19", {
         sv_found = match_cnv()
@@ -287,7 +293,7 @@ server <- function(input, output, session) {
         chrom = seqlevels(sv_found)
         sv_found = unlist(liftOver(sv_found, hg38_19))
         sv_found = reduce(split(sv_found, sv_found$name), 
-                          min.gapwidth = 1000000)
+                          min.gapwidth = 10000000)
         sv_found = as.data.frame(sv_found)
         colnames(sv_found) = c("", "name", "chrom", "start", "end", "width", "strand")
         sv_found = sv_found[sv_found$chrom == chrom, ]
