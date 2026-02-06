@@ -52,7 +52,10 @@ ui <- page_sidebar(
                      choices = c("hg19", "hg38"),
                      selected = "hg38"),
         actionButton("search", h5("Search", style = "color: green;")),
-        actionButton("clear", h6("clear", style = "color: red;"))
+        sliderInput("zoom", HTML("<b>Zoom</b>"),
+                    min = 0, max = 3, step = 0.5,
+                    value = 0),
+        actionButton("clear", h5("Clear result", style = "color: red;"))
     ),
     
     ## output
@@ -247,7 +250,7 @@ server <- function(input, output, session) {
     })
     
     # Display matching SVs if found.
-    observeEvent(input$search, {
+    observeEvent(c(input$search, input$zoom), {
         gene_df = gene_df()[[1]]
         req(input$exon_to >= input$exon_from & input$exon_to <= max(gene_df$exon))
 
@@ -264,7 +267,7 @@ server <- function(input, output, session) {
             
             # Display in the scale of longest interval,
             # which help to judge the match.
-            sv_found = as.data.frame(sv_found)
+            sv_found = as.data.frame(rev(sv_found))
             colnames(sv_found)[1] = "chrom"
             sv_pos = sv_found[, 1:3]
             colnames(sv_pos) = c("chrom", "start", "end")
@@ -274,13 +277,34 @@ server <- function(input, output, session) {
                                  function(x) {GeneRegionTrack(sv_found[x, ],
                                               name = as.character(sv_found[x, ]$name))
                             })
-            output$matching_sv_viz = renderPlot({
-                            plotTracks(c(list(ax, cnv_track), found_track),
-                                       from = min(pos$start), to = max(pos$end))
+            
+            # Zoom: extend the range at half of the gene length both sides at 1
+            if (input$zoom == 0) {
+                output$matching_sv_viz = renderPlot({
+                                plotTracks(c(list(ax, cnv_track), found_track),
+                                           from = min(pos$start), to = max(pos$end))
+                })
+            } else {
+                fold = input$zoom
+                if (gene_df$strand[1] == "+") {
+                    gene_length = max(gene_df$end) - min(gene_df$start) + 1
+                    output$matching_sv_viz = renderPlot({
+                        plotTracks(c(list(ax, cnv_track), found_track),
+                            from = min(gene_df$start) - round(gene_length * (3-fold)),
+                            to = max(gene_df$end) + round(gene_length * (3-fold)))
+                    })
+                } else {
+                    gene_length = max(gene_df$start) - min(gene_df$end) - 1
+                    output$matching_sv_viz = renderPlot({
+                        plotTracks(c(list(ax, cnv_track), found_track),
+                            from = min(gene_df$end) - round(gene_length * (3-fold)),
+                            to = max(gene_df$start) + round (gene_length * (3-fold)))                    
+                    })
+                }
+            }
             output$matching_sv = renderTable({sv_found},
                                              striped = TRUE, hover = TRUE, 
                                              bordered = TRUE, align = "c")
-            })
         }
     })
     
