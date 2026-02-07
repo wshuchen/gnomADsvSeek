@@ -44,7 +44,7 @@ ui <- page_sidebar(
                      choices = c("del", "dup"),
                      selected = "del"), 
         radioButtons("boundary", HTML("<b>Boundary</b>
-                                      <br>Restrited range to exon not first/last"), 
+                                      <br>by exon not first or last"), 
                      choices = c("bound", "unbound"),
                      selected = "unbound"),
         radioButtons("genome", HTML("<b>Genome</b>
