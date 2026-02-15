@@ -3,7 +3,7 @@
 ## processGnomADcnv.sh
 
 ## Download and process gnomAD CNVs BED file, 
-# preserving 10 columns and change the coordinate into GenBank style (1-based). 
+# presere 10 columns and change the coordinate into GenBank style (1-based). 
 # https://discuss.gnomad.broadinstitute.org/t/gnomad-copy-number-variants-bed-files/422
 wget https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/exome_cnv/gnomad.v4.1.cnv.all.bed
 

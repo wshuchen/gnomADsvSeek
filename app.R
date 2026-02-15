@@ -1,6 +1,6 @@
-## An shiny app for using gene symbol and exon numbers 
-## to search matching structure variants, deletion and duplication only, 
-## in gnomAD v4 structure database (SVs and CNVs). Default to h38 genome.
+## A shiny app for using gene symbol and exon number 
+## to search matching exon deletion and duplication in gnomADv4  
+## structure variant data (SVs and CNVs). Default to h38 genome.
 
 library(shiny)
 library(bslib)
@@ -10,39 +10,52 @@ library(rtracklayer)
 ## MANE and MANE Plus Clinical exon table, v1.4, hg38.
 mane_exon = read.table("data/mane1.4_exon", header = TRUE, sep = "\t")
 
-## gnomAD SV (del and dup only) and CNV BED files with selected columns and 
-## 1 added to start to be in GenBank style. SV read in below. 
+## Processed gnomAD SV (del and dup only) and CNV BED files with selected columns
+## and 1 added to start to be in GenBank style. SV read in below. 
 cnv = read.table("data/gnomADcnv", header = TRUE, sep = "\t")
 
-## chain file for hg38 to hg19 liftover.
+## Chain file for hg38 to hg19 coordinate liftover.
 hg38_19 = import.chain("data/hg38ToHg19.over.chain")
-
 
 ui <- page_sidebar(
     theme = bs_theme(version = 5, bootswatch = "journal"),
-    title = markdown("**gnomADsvSeek**"),
+    title = tagList(
+            shiny::tags$span(
+                shiny::tags$i("gnomADsvSeek"), 
+                style = "margin-left: 30px; font-weight: bold; font-size: 1.5rem;"),
+            shiny::tags$span(
+                shiny::tags$i("Searching exon del/dup in gnomAD structure variant data"), 
+                style = "margin-top: 5px; font-weight: bold; font-size: 1rem;"),
+            shiny::tags$a(
+                href = "https://github.com/wshuchen/gnomADsvSeek.git", 
+                       "GitHub repository",
+                target = "_blank",
+                style = "margin-top: 5px; margin-right: 30px; 
+                        font-size: 1rem; color: white; 
+                        text-decoration: underline;"
+            )
+    ),
     
-    ## input
+    ## Input
     sidebar = sidebar(
         width = 300,
-        HTML("Search gnomAD structure variant database for matching entries.<br>
-                 <br>Deletion and duplication only.<br>
-                 <br>MANE and MANE Plus Clinical transcripts only.<br>"),
-        HTML('<p>Visit app <a href="https://github.com/wshuchen/gnomADsvSeek"
-             target="_blank">GitHub repository</a></p>'),
-        textInput("gene", markdown("**Gene name**"),
+        p("hg38 MANE transcripts", 
+          style = "color: green; font-weight: bold; font-size: 18px;"),
+        p("(e.g. PKD1 deletion of exons 22-30)", style = "font-size: 1rem;"),
+
+        textInput("gene", HTML("<b>Gene name</b>"),
               value = "",
-              placeholder = "TP53 OR tp53"),
-        numericInput("exon_from", markdown("**Exon from**"),
+              placeholder = "PKD1 OR pkd1"),
+        numericInput("exon_from", HTML("<b>Exon from</b>"),
                  value = ""),
-        numericInput("exon_to", markdown("**Exon to**"),
+        numericInput("exon_to", HTML("<b>Exon to</b>"),
                  value = ""),
-        radioButtons("variant", markdown("**Variant**"), 
+        radioButtons("variant", HTML("<b>Variant</b>"), 
                      choices = c("SV", "CNV"),
                      selected = "SV"),
-        radioButtons("type", markdown("**Type**"), 
+        radioButtons("type", HTML("<b>Type</b>"), 
                      choices = c("del", "dup"),
-                     selected = "del"), 
+                     selected = "del"),  
         radioButtons("boundary", HTML("<b>Boundary</b>
                                       <br>by exon not first or last"), 
                      choices = c("bound", "unbound"),
@@ -51,37 +64,48 @@ ui <- page_sidebar(
                                     <br>h38 to hg19 liftover for the result"), 
                      choices = c("hg19", "hg38"),
                      selected = "hg38"),
-        actionButton("search", h5("Search", style = "color: green;")),
+        div(style = "text-align: center;",
+            actionButton("search", "Search", 
+                        style = "background-color: #01774e;
+                                 font-size: 18px; color: white;
+                                 height: 40px; width: 120px;")
+        ),
         sliderInput("zoom", HTML("<b>Zoom</b>"),
-                    min = 0, max = 3, step = 0.5,
-                    value = 0),
-        actionButton("clear", h5("Clear result", style = "color: red;"))
+                    min = 0, max = 3, step = 0.5, value = 0),
+        shiny::tags$br(),
+        div(style = "text-align: center;",
+            actionButton("clear", "Clear", 
+                         style = "background-color: #01774e;
+                                 font-size: 18px; color: white;
+                                 height: 40px; width: 120px;")
+        )
     ),
     
-    ## output
-     card(card_header(HTML("<b>Query gene</b>")),
-          height = "350px",
-          tableOutput("gene_exon")),
-     textOutput("gene_info"),
-     uiOutput("error"),
-     card(height = "300px",
-          plotOutput("gene_viz")),
-     card(card_header(HTML("<b>Overlapping intervals</b>")),
-          plotOutput("matching_sv_viz"),
-          height = "500px"),
-     card(tableOutput("matching_sv"),
-          height = "300px")
+    ## Output
+    card(card_header(HTML("<b>Query gene</b>")),
+         height = "350px",
+         tableOutput("gene_exon")),
+    textOutput("gene_info"),
+    uiOutput("error"),
+    card(height = "300px",
+         plotOutput("gene_viz")),
+    card(card_header(HTML("<b>Fully overlapping intervals</b>")),
+         plotOutput("matching_sv_viz"),
+         height = "500px"),
+    card(tableOutput("matching_sv"),
+         height = "300px")
 )
 
 server <- function(input, output, session) {
 
-    ## query gene data and view
+    ## Query gene data and view
     gene_df = reactive({
         req(input$gene)
         gene_df = mane_exon[mane_exon$symbol == toupper(input$gene), ]
-        gene_info = paste(gene_df$gene[1],
-                          gene_df$chrom[1],
-                          gene_df$start[1], "-", gene_df$end[length(gene_df$end)],
+        gene_info = paste(toupper(input$gene), 
+                          paste0(gene_df$chrom[1], ":",
+                                gene_df$start[1], "-", 
+                                gene_df$end[length(gene_df$end)]),
                           gene_df$transcript[1],
                           gene_df$exon[length(gene_df$exon)], "exons")
         gene_track = GeneRegionTrack(gene_df, 
@@ -90,7 +114,7 @@ server <- function(input, output, session) {
         list(gene_df, gene_info, gene_track)
     })
     
-    ## query CNV data and view
+    ## Query CNV data and view
     cnv_df = reactive({
         exon_from = input$exon_from
         exon_to = input$exon_to
@@ -99,8 +123,8 @@ server <- function(input, output, session) {
         
         cnv_df = gene_df[exon_from:exon_to, ]
         cnv_track = GeneRegionTrack(cnv_df, name = "CNV",
-                                    background.panel = "#FFFEDB",
-                                    background.title = "red")
+                                    background.panel = "#F0FFFF",
+                                    background.title = "#d65b00")
         cnv_track = HighlightTrack(list(gene_track, cnv_track),
                                     start = min(cnv_df$start),
                                     end = max(cnv_df$end))
@@ -147,20 +171,20 @@ server <- function(input, output, session) {
         if (input$boundary == "bound") {
             if (exon_from > 1) {
                 if (gene_df$strand[1] == "+") {
-                    lower_bound = gene_df$end[exon_from-1]
-                    sv_found = sv_found[start(sv_found) >= lower_bound[1]]
+                    start_bound = gene_df$end[exon_from-1]
+                    sv_found = sv_found[start(sv_found) >= start_bound[1]]
                 } else {
-                    lower_bound = gene_df$start[exon_from-1]
-                    sv_found = sv_found[end(sv_found) <= lower_bound[1]]
+                    start_bound = gene_df$start[exon_from-1]
+                    sv_found = sv_found[end(sv_found) <= start_bound[1]]
                 }
             }
             if (exon_to < max(gene_df$exon)) {
                 if (gene_df$strand[1] == "+") {
-                    upper_bound = gene_df$start[exon_to+1]
-                    sv_found = sv_found[end(sv_found) <= upper_bound[1]]
+                    end_bound = gene_df$start[exon_to+1]
+                    sv_found = sv_found[end(sv_found) <= end_bound[1]]
                 } else {
-                    upper_bound = gene_df$end[exon_to+1]
-                    sv_found = sv_found[start(sv_found) >= upper_bound[1]]
+                    end_bound = gene_df$end[exon_to+1]
+                    sv_found = sv_found[start(sv_found) >= end_bound[1]]
                 }           
             }
         }
@@ -214,7 +238,7 @@ server <- function(input, output, session) {
     })
            
     ## Outputs
-    # Display gene info and view when gene name is provided.
+    # Display gene info when gene name is provided.
     observe({
         req(toupper(input$gene) %in% mane_exon$symbol)
         gene_df = gene_df()[[1]]
@@ -232,8 +256,8 @@ server <- function(input, output, session) {
     observe({
         gene_df = gene_df()[[1]]
         gene_track = gene_df()[[3]]
+        
         req(input$exon_to >= input$exon_from & input$exon_to <= max(gene_df$exon))
-
         output$error = renderUI({
             validate(need(input$exon_to >= input$exon_from,
                           "Error: second exon number must >= first exon number."),
@@ -243,6 +267,7 @@ server <- function(input, output, session) {
                            "exon", input$exon_from,
                            "to", input$exon_to))
         })
+        
         cnv_df = cnv_df()[[1]]
         cnv_track = cnv_df()[[2]]
         ax <- GenomeAxisTrack()
@@ -254,16 +279,26 @@ server <- function(input, output, session) {
         gene_df = gene_df()[[1]]
         req(input$exon_to >= input$exon_from & input$exon_to <= max(gene_df$exon))
 
+        cnv_df = cnv_df()[[1]]
+        cnv_info = paste0(cnv_df$chrom[1], ":", 
+                          min(cnv_df$start), "-", max(cnv_df$end),
+                          input$type)
+        
         cnv_track = cnv_df()[[2]]
         ax <- GenomeAxisTrack()
         
         sv_found = match_cnv()
         if (length(sv_found) == 0) {
-            output$error = renderUI({p(paste("No overlapping SV found."), style = "color: red;")})
+            output$error = renderUI({p(paste("No overlapping SV found."), 
+                                       style = "color: red;")})
         }  
         if (length(sv_found) >= 1) {
             SV = paste0(as.character(sv_found$name), collapse = ", ")
-            output$error = renderUI({p(paste("Overlapping SVs:", SV), style = "color: green;")})
+            output$error = renderUI({
+                    HTML(paste("Query variant - ", cnv_info, "<br>",
+                        shiny::tags$span(paste("Overlapping SVs - ", SV), 
+                                   style = "color: green;")))
+            })
             
             # Display in the scale of longest interval,
             # which help to judge the match.
@@ -275,14 +310,15 @@ server <- function(input, output, session) {
 
             found_track = lapply(1:nrow(sv_found),
                                  function(x) {GeneRegionTrack(sv_found[x, ],
-                                              name = as.character(sv_found[x, ]$name))
+                                        name = as.character(sv_found[x, ]$name))
                             })
             
-            # Zoom: extend the range at half of the gene length both sides at 1
+            # Zoom 1: extend the range at half of the gene length 
+            # on both sides
             if (input$zoom == 0) {
                 output$matching_sv_viz = renderPlot({
                                 plotTracks(c(list(ax, cnv_track), found_track),
-                                           from = min(pos$start), to = max(pos$end))
+                                       from = min(pos$start), to = max(pos$end))
                 })
             } else {
                 fold = input$zoom
@@ -309,7 +345,7 @@ server <- function(input, output, session) {
     })
     
     # Liftover may break a large interval into pieces with different gaps. 
-    # We would merge all pieces from a sv into one (hopefully) when that happens.
+    # We would hopefully merge all pieces from a sv into one.
     # We would also get rid of any pieces mapped to other chromosomes.
     observeEvent(input$genome == "hg19", {
         sv_found = match_cnv()
