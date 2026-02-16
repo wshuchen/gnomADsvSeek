@@ -56,10 +56,10 @@ ui <- page_sidebar(
         radioButtons("type", HTML("<b>Type</b>"), 
                      choices = c("del", "dup"),
                      selected = "del"),  
-        radioButtons("boundary", HTML("<b>Boundary</b>
+        radioButtons("limit", HTML("<b>Limit</b>
                                       <br>by exon not first or last"), 
-                     choices = c("bound", "unbound"),
-                     selected = "unbound"),
+                     choices = c("yes", "no"),
+                     selected = "no"),
         radioButtons("genome", HTML("<b>Genome</b>
                                     <br>h38 to hg19 liftover for the result"), 
                      choices = c("hg19", "hg38"),
@@ -168,23 +168,23 @@ server <- function(input, output, session) {
 
         # Restrict the range to within the exon not first or last,
         # open in both ends (exon 1 and last exon), with strand consideration.
-        if (input$boundary == "bound") {
+        if (input$limit == "yes") {
             if (exon_from > 1) {
                 if (gene_df$strand[1] == "+") {
-                    start_bound = gene_df$end[exon_from-1]
-                    sv_found = sv_found[start(sv_found) >= start_bound[1]]
+                    start_limit = gene_df$end[exon_from-1]
+                    sv_found = sv_found[start(sv_found) >= start_limit[1]]
                 } else {
-                    start_bound = gene_df$start[exon_from-1]
-                    sv_found = sv_found[end(sv_found) <= start_bound[1]]
+                    start_limit = gene_df$start[exon_from-1]
+                    sv_found = sv_found[end(sv_found) <= start_limit[1]]
                 }
             }
             if (exon_to < max(gene_df$exon)) {
                 if (gene_df$strand[1] == "+") {
-                    end_bound = gene_df$start[exon_to+1]
-                    sv_found = sv_found[end(sv_found) <= end_bound[1]]
+                    end_limit = gene_df$start[exon_to+1]
+                    sv_found = sv_found[end(sv_found) <= end_limit[1]]
                 } else {
-                    end_bound = gene_df$end[exon_to+1]
-                    sv_found = sv_found[start(sv_found) >= end_bound[1]]
+                    end_limit = gene_df$end[exon_to+1]
+                    sv_found = sv_found[start(sv_found) >= end_limit[1]]
                 }           
             }
         }
