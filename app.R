@@ -1,6 +1,8 @@
 ## A shiny app for using gene symbol and exon number 
 ## to search matching exon deletion and duplication in gnomADv4  
 ## structure variant data (SVs and CNVs). Default to h38 genome.
+## Use processed gnomAD SV (del and dup only) and CNV BED files 
+## with selected columns and 1 added to start to be in GenBank style.
 
 library(shiny)
 library(bslib)
@@ -8,32 +10,25 @@ library(Gviz)
 library(rtracklayer)
 
 ## MANE and MANE Plus Clinical exon table, v1.4, hg38.
-mane_exon = read.table("data/mane1.4_exon", header = TRUE, sep = "\t")
-
-## Processed gnomAD SV (del and dup only) and CNV BED files with selected columns
-## and 1 added to start to be in GenBank style. SV read in below. 
-cnv = read.table("data/gnomADcnv", header = TRUE, sep = "\t")
-
-## Chain file for hg38 to hg19 coordinate liftover.
-hg38_19 = import.chain("data/hg38ToHg19.over.chain")
+mane_exon = readRDS("rdsData/mane1.4_exon.rds")
 
 ui <- page_sidebar(
     theme = bs_theme(version = 5, bootswatch = "journal"),
     title = tagList(
-            shiny::tags$span(
-                shiny::tags$i("gnomADsvSeek"), 
-                style = "margin-left: 30px; font-weight: bold; font-size: 1.5rem;"),
-            shiny::tags$span(
-                shiny::tags$i("Searching exon del/dup in gnomAD structure variant data"), 
-                style = "margin-top: 5px; font-weight: bold; font-size: 1rem;"),
-            shiny::tags$a(
-                href = "https://github.com/wshuchen/gnomADsvSeek.git", 
-                       "GitHub repository",
-                target = "_blank",
-                style = "margin-top: 5px; margin-right: 30px; 
+        shiny::tags$span(
+            shiny::tags$i("gnomADsvSeek"), 
+            style = "margin-left: 30px; font-weight: bold; font-size: 1.5rem;"),
+        shiny::tags$span(
+            shiny::tags$i("Searching exon del/dup in gnomAD structure variant data"), 
+            style = "margin-top: 5px; font-weight: bold; font-size: 1rem;"),
+        shiny::tags$a(
+            href = "https://github.com/wshuchen/gnomADsvSeek.git", 
+            "GitHub repository",
+            target = "_blank",
+            style = "margin-top: 5px; margin-right: 30px; 
                         font-size: 1rem; color: white; 
                         text-decoration: underline;"
-            )
+        )
     ),
     
     ## Input
@@ -42,14 +37,14 @@ ui <- page_sidebar(
         p("hg38 MANE transcripts", 
           style = "color: green; font-weight: bold; font-size: 18px;"),
         p("(e.g. PKD1 deletion of exons 22-30)", style = "font-size: 1rem;"),
-
+        
         textInput("gene", HTML("<b>Gene name</b>"),
-              value = "",
-              placeholder = "PKD1 OR pkd1"),
+                  value = "",
+                  placeholder = "PKD1 OR pkd1"),
         numericInput("exon_from", HTML("<b>Exon from</b>"),
-                 value = ""),
+                     value = ""),
         numericInput("exon_to", HTML("<b>Exon to</b>"),
-                 value = ""),
+                     value = ""),
         radioButtons("variant", HTML("<b>Variant</b>"), 
                      choices = c("SV", "CNV"),
                      selected = "SV"),
@@ -66,7 +61,7 @@ ui <- page_sidebar(
                      selected = "hg38"),
         div(style = "text-align: center;",
             actionButton("search", "Search", 
-                        style = "background-color: #01774e;
+                         style = "background-color: #01774e;
                                  font-size: 18px; color: white;
                                  height: 40px; width: 120px;")
         ),
@@ -97,15 +92,15 @@ ui <- page_sidebar(
 )
 
 server <- function(input, output, session) {
-
+    
     ## Query gene data and view
     gene_df = reactive({
         req(input$gene)
         gene_df = mane_exon[mane_exon$symbol == toupper(input$gene), ]
         gene_info = paste(toupper(input$gene), 
                           paste0(gene_df$chrom[1], ":",
-                                gene_df$start[1], "-", 
-                                gene_df$end[length(gene_df$end)]),
+                                 gene_df$start[1], "-", 
+                                 gene_df$end[length(gene_df$end)]),
                           gene_df$transcript[1],
                           gene_df$exon[length(gene_df$exon)], "exons")
         gene_track = GeneRegionTrack(gene_df, 
@@ -126,8 +121,8 @@ server <- function(input, output, session) {
                                     background.panel = "#F0FFFF",
                                     background.title = "#d65b00")
         cnv_track = HighlightTrack(list(gene_track, cnv_track),
-                                    start = min(cnv_df$start),
-                                    end = max(cnv_df$end))
+                                   start = min(cnv_df$start),
+                                   end = max(cnv_df$end))
         list(cnv_df, cnv_track)
     })
     
@@ -139,33 +134,29 @@ server <- function(input, output, session) {
         gene_df = gene_df()[[1]]
         cnv_df = cnv_df()[[1]]
         cnv_gr = GRanges(seqnames = cnv_df$chrom[1],
-                               ranges = IRanges(min(cnv_df$start),
-                                                max(cnv_df$end)),
-                               strand = cnv_df$strand[1])
-
+                         ranges = IRanges(min(cnv_df$start),
+                                          max(cnv_df$end)),
+                         strand = cnv_df$strand[1])
+        
         # Get the interval containing the query CNV.
         chr = unique(cnv_df$chrom)
-        sv_file = paste0("data/SV/gnomADsv_", chr)
-        sv = read.table(sv_file, header = TRUE, sep = "\t")
         if (input$variant == "SV") {
+            sv = readRDS("rdsData/gnomADsv.rds")
             sv_select = sv[sv$chrom == cnv_df$chrom[1] &
                                sv$type == toupper(input$type), ]    
         } else {
+            cnv = readRDS("rdsData/gnomADcnv.rds")
             sv_select = cnv[cnv$chrom == cnv_df$chrom[1] &
-                   cnv$type == toupper(input$type), ] 
+                                cnv$type == toupper(input$type), ] 
         }
         sv_select_gr = GRanges(seqnames = sv_select$chrom,
-                                ranges = IRanges(sv_select$start, sv_select$end))
-        if (input$variant == "SV") {
-            mcols(sv_select_gr) = sv_select[4:9]    
-        } else {
-            mcols(sv_select_gr) = sv_select[4:10]
-        }
+                               ranges = IRanges(sv_select$start, sv_select$end))
+        mcols(sv_select_gr) = sv_select[4:length(sv_select)]    
         
         sv_hits = findOverlaps(cnv_gr, sv_select_gr, type = "within")
         hits_index = subjectHits(sv_hits)
         sv_found = sv_select_gr[hits_index]
-
+        
         # Restrict the range to within the exon not first or last,
         # open in both ends (exon 1 and last exon), with strand consideration.
         if (input$limit == "yes") {
@@ -225,9 +216,9 @@ server <- function(input, output, session) {
                 return(paste(symbols, "and other", n, "MANE genes"))
             }
         }
-
+        
         if (length(sv_found) >= 1) {
-             symbols = lapply(sv_found$name, function(x) (get_symbol(x)))
+            symbols = lapply(sv_found$name, function(x) (get_symbol(x)))
             if (input$variant == "SV") {
                 sv_found$genes = unlist(symbols) 
             } else {
@@ -236,7 +227,7 @@ server <- function(input, output, session) {
         }
         sv_found
     })
-           
+    
     ## Outputs
     # Display gene info when gene name is provided.
     observe({
@@ -278,7 +269,7 @@ server <- function(input, output, session) {
     observeEvent(c(input$search, input$zoom), {
         gene_df = gene_df()[[1]]
         req(input$exon_to >= input$exon_from & input$exon_to <= max(gene_df$exon))
-
+        
         cnv_df = cnv_df()[[1]]
         cnv_info = paste0(cnv_df$chrom[1], ":", 
                           min(cnv_df$start), "-", max(cnv_df$end),
@@ -293,32 +284,35 @@ server <- function(input, output, session) {
                                        style = "color: red;")})
         }  
         if (length(sv_found) >= 1) {
+            
+            sv_found = as.data.frame(rev(sv_found))
+            colnames(sv_found)[1] = "chrom"
+            
+            # Write out the list of SVs. 
             SV = paste0(as.character(sv_found$name), collapse = ", ")
             output$error = renderUI({
-                    HTML(paste("Query variant - ", cnv_info, "<br>",
-                        shiny::tags$span(paste("Overlapping SVs - ", SV), 
-                                   style = "color: green;")))
+                HTML(paste("Query variant - ", cnv_info, "<br>",
+                           shiny::tags$span(paste("Overlapping SVs - ", SV), 
+                                            style = "color: green;")))
             })
             
             # Display in the scale of longest interval,
             # which help to judge the match.
-            sv_found = as.data.frame(rev(sv_found))
-            colnames(sv_found)[1] = "chrom"
             sv_pos = sv_found[, 1:3]
             colnames(sv_pos) = c("chrom", "start", "end")
             pos = rbind(gene_df[, 1:3], sv_pos)
-
+            
             found_track = lapply(1:nrow(sv_found),
                                  function(x) {GeneRegionTrack(sv_found[x, ],
-                                        name = as.character(sv_found[x, ]$name))
-                            })
+                                                              name = as.character(sv_found[x, ]$name))
+                                 })
             
             # Zoom 1: extend the range at half of the gene length 
             # on both sides
             if (input$zoom == 0) {
                 output$matching_sv_viz = renderPlot({
-                                plotTracks(c(list(ax, cnv_track), found_track),
-                                       from = min(pos$start), to = max(pos$end))
+                    plotTracks(c(list(ax, cnv_track), found_track),
+                               from = min(pos$start), to = max(pos$end))
                 })
             } else {
                 fold = input$zoom
@@ -326,15 +320,15 @@ server <- function(input, output, session) {
                     gene_length = max(gene_df$end) - min(gene_df$start) + 1
                     output$matching_sv_viz = renderPlot({
                         plotTracks(c(list(ax, cnv_track), found_track),
-                            from = min(gene_df$start) - round(gene_length * (3-fold)),
-                            to = max(gene_df$end) + round(gene_length * (3-fold)))
+                                   from = min(gene_df$start) - round(gene_length * (3-fold)),
+                                   to = max(gene_df$end) + round(gene_length * (3-fold)))
                     })
                 } else {
                     gene_length = max(gene_df$start) - min(gene_df$end) - 1
                     output$matching_sv_viz = renderPlot({
                         plotTracks(c(list(ax, cnv_track), found_track),
-                            from = min(gene_df$end) - round(gene_length * (3-fold)),
-                            to = max(gene_df$start) + round (gene_length * (3-fold)))                    
+                                   from = min(gene_df$end) - round(gene_length * (3-fold)),
+                                   to = max(gene_df$start) + round (gene_length * (3-fold)))                    
                     })
                 }
             }
@@ -348,6 +342,8 @@ server <- function(input, output, session) {
     # We would hopefully merge all pieces from a sv into one.
     # We would also get rid of any pieces mapped to other chromosomes.
     observeEvent(input$genome == "hg19", {
+        # Chain file for hg38 to hg19 coordinate liftover.
+        hg38_19 = readRDS("rdsData/hg38ToHg19.over.chain.rds")
         sv_found = match_cnv()
         req(length(sv_found) >= 1)
         chrom = seqlevels(sv_found)
@@ -361,7 +357,7 @@ server <- function(input, output, session) {
                                          striped = TRUE, hover = TRUE, 
                                          bordered = TRUE, align = "c")
     })
-        
+    
     # Clear search result when needed.
     observeEvent(input$clear, {
         output$matching_sv_viz = renderPlot({})
