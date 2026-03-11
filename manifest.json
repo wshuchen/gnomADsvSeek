@@ -3399,7 +3399,7 @@
     },
     "plogr": {
       "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
+      "Repository": null,
       "description": {
         "Package": "plogr",
         "Title": "The 'plog' C++ Logging Library",
@@ -4383,94 +4383,13 @@
   },
   "files": {
     "app.R": {
-      "checksum": "7628aa5b0f3bb37f65f733eaea27a648"
-    },
-    "data/gnomADcnv": {
-      "checksum": "d5fb238e96f75697bdc4c881145dce1b"
-    },
-    "data/hg38ToHg19.over.chain": {
-      "checksum": "97b423dc9095cc322460f0ff7f50c93a"
-    },
-    "data/mane1.4_exon": {
-      "checksum": "e232be39f66b84db79870c5d1a4c50aa"
-    },
-    "data/SV/gnomADsv_chr1": {
-      "checksum": "d42c013b4b359e917527e26ea779e55d"
-    },
-    "data/SV/gnomADsv_chr10": {
-      "checksum": "92885e93e6b0b1931a6c7fbc4c737622"
-    },
-    "data/SV/gnomADsv_chr11": {
-      "checksum": "5bce5ca430f9b057c723b9941f0faaa0"
-    },
-    "data/SV/gnomADsv_chr12": {
-      "checksum": "c5852d539c6bfdf136caaf13a79cc64f"
-    },
-    "data/SV/gnomADsv_chr13": {
-      "checksum": "0f5a2630079f9fbefb854073ac1ba22c"
-    },
-    "data/SV/gnomADsv_chr14": {
-      "checksum": "cdef1e5c09b7a167b1fffe92cd6c6b24"
-    },
-    "data/SV/gnomADsv_chr15": {
-      "checksum": "c883393917377719a7649a60d14e9801"
-    },
-    "data/SV/gnomADsv_chr16": {
-      "checksum": "b870e4e18541d8700e79e3e7af1d95ba"
-    },
-    "data/SV/gnomADsv_chr17": {
-      "checksum": "1022021c592fd59ee2e2884e96f979c8"
-    },
-    "data/SV/gnomADsv_chr18": {
-      "checksum": "27001e226b0df5d932b5607c8a40dee9"
-    },
-    "data/SV/gnomADsv_chr19": {
-      "checksum": "2738f7136f6dc0299ff411bdfa358aa1"
-    },
-    "data/SV/gnomADsv_chr2": {
-      "checksum": "6f8b8e9dfd98c1dab95a0aa69ed62420"
-    },
-    "data/SV/gnomADsv_chr20": {
-      "checksum": "8a030febdf67901ec03edb7d9c437e3a"
-    },
-    "data/SV/gnomADsv_chr21": {
-      "checksum": "1e7a859a50584e19da8453059d15fdb9"
-    },
-    "data/SV/gnomADsv_chr22": {
-      "checksum": "7e9d06655f6bf5e5c932f29b97ef7080"
-    },
-    "data/SV/gnomADsv_chr3": {
-      "checksum": "73a02409c92661022947dedf4608d521"
-    },
-    "data/SV/gnomADsv_chr4": {
-      "checksum": "ea04c0bda42b7b2aadf98ca7ce24c1e0"
-    },
-    "data/SV/gnomADsv_chr5": {
-      "checksum": "938cbec817513c105b08640407ced507"
-    },
-    "data/SV/gnomADsv_chr6": {
-      "checksum": "863a8adc5975aeb5f6ccd41b34d62481"
-    },
-    "data/SV/gnomADsv_chr7": {
-      "checksum": "db31534f17af6820685b9d946f49436d"
-    },
-    "data/SV/gnomADsv_chr8": {
-      "checksum": "a400704cdded05a5d2e4981fc08281b3"
-    },
-    "data/SV/gnomADsv_chr9": {
-      "checksum": "6d4e3ac11989b5a4ffd67c179dfd8997"
-    },
-    "data/SV/gnomADsv_chrX": {
-      "checksum": "32d92178d75a35dd4437649851c873a5"
-    },
-    "data/SV/gnomADsv_chrY": {
-      "checksum": "09404c383a71870ecf13045d7f1b5963"
+      "checksum": "5ab80faddc1ed2cf51872621adac11c4"
     },
     "LICENSE": {
       "checksum": "c75451e66d86ad8735e39b756098a2eb"
     },
     "processGnomADcnv.sh": {
-      "checksum": "305d10cb11d026b3d941646bf2474bff"
+      "checksum": "8c7d1f714988582af5b586cd8a3788cb"
     },
     "processGnomADsv.sh": {
       "checksum": "43c281fdea50b257c7ae358ebb72dec8"
@@ -4478,8 +4397,20 @@
     "processMANE1.4Exon.R": {
       "checksum": "57af9a79ffe42bb583a78c1668afc007"
     },
+    "rdsData/gnomADcnv.rds": {
+      "checksum": "f30094d448c3fdf0f6a703a6ca78d7f4"
+    },
+    "rdsData/gnomADsv.rds": {
+      "checksum": "d0df1d98b879d229fa9b72c9b62e2d78"
+    },
+    "rdsData/hg38ToHg19.over.chain.rds": {
+      "checksum": "3d8641127aa3a105d83d35049e67c701"
+    },
+    "rdsData/mane1.4_exon.rds": {
+      "checksum": "a2e72f1575106170bd86abd147cb6431"
+    },
     "README.md": {
-      "checksum": "6974f1abeedaa3248bd622d3d46ea914"
+      "checksum": "5056966da6cbef428b286d51fe9bf559"
     }
   },
   "users": null
