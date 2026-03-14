@@ -6,11 +6,6 @@
 
 library(shiny)
 library(bslib)
-library(Gviz)
-library(rtracklayer)
-
-## MANE and MANE Plus Clinical exon table, v1.4, hg38.
-mane_exon = readRDS("rdsData/mane1.4_exon.rds")
 
 ui <- page_sidebar(
     theme = bs_theme(version = 5, bootswatch = "journal"),
@@ -93,6 +88,11 @@ ui <- page_sidebar(
 
 server <- function(input, output, session) {
     
+    library(Gviz)
+    
+    ## MANE and MANE Plus Clinical exon table, v1.4, hg38.
+    mane_exon = readRDS("rdsData/mane1.4_exon.rds")
+    
     ## Query gene data and view
     gene_df = reactive({
         req(input$gene)
@@ -139,14 +139,15 @@ server <- function(input, output, session) {
                          strand = cnv_df$strand[1])
         
         # Get the interval containing the query CNV.
-        chr = unique(cnv_df$chrom)
+        cnv_chrom = unique(cnv_df$chrom)
         if (input$variant == "SV") {
-            sv = readRDS("rdsData/gnomADsv.rds")
-            sv_select = sv[sv$chrom == cnv_df$chrom[1] &
+            sv_file = paste0("rdsData/SV/gnomADsv_", cnv_chrom, ".rds")
+            sv = readRDS(sv_file)
+            sv_select = sv[sv$chrom == cnv_chrom &
                                sv$type == toupper(input$type), ]    
         } else {
             cnv = readRDS("rdsData/gnomADcnv.rds")
-            sv_select = cnv[cnv$chrom == cnv_df$chrom[1] &
+            sv_select = cnv[cnv$chrom == cnv_chrom &
                                 cnv$type == toupper(input$type), ] 
         }
         sv_select_gr = GRanges(seqnames = sv_select$chrom,
@@ -343,6 +344,7 @@ server <- function(input, output, session) {
     # We would also get rid of any pieces mapped to other chromosomes.
     observeEvent(input$genome == "hg19", {
         # Chain file for hg38 to hg19 coordinate liftover.
+        library(rtracklayer)
         hg38_19 = readRDS("rdsData/hg38ToHg19.over.chain.rds")
         sv_found = match_cnv()
         req(length(sv_found) >= 1)
