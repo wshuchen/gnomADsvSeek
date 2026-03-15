@@ -1,1 +1,5 @@
 *.R linguist-language=R
+*.md linguist-documentation
+*.json linguist-documentation
+data/* linguist-documentation
+rdsData/* linguist-documentation
