@@ -284,8 +284,7 @@ server <- function(input, output, session) {
             output$error = renderUI({p(paste("No overlapping SV found."), 
                                        style = "color: red;")})
         }  
-        if (length(sv_found) >= 1) {
-            
+        if (length(sv_found) >= 1) {            
             sv_found = as.data.frame(rev(sv_found))
             colnames(sv_found)[1] = "chrom"
             
@@ -339,22 +338,27 @@ server <- function(input, output, session) {
         }
     })
     
-    # Liftover may break a large interval into pieces with different gaps. 
-    # We would hopefully merge all pieces from a sv into one.
-    # We would also get rid of any pieces mapped to other chromosomes.
+	# h38 to hg19 coordinate liftover for the result if requested.
     observeEvent(input$genome == "hg19", {
+    	library(rtracklayer)
         # Chain file for hg38 to hg19 coordinate liftover.
-        library(rtracklayer)
         hg38_19 = readRDS("rdsData/hg38ToHg19.over.chain.rds")
+        
         sv_found = match_cnv()
         req(length(sv_found) >= 1)
         chrom = seqlevels(sv_found)
         sv_found = unlist(liftOver(sv_found, hg38_19))
+        
+        # Liftover may break a large interval into pieces with different gaps. 
+        # We would hopefully merge all pieces from a sv into one.
         sv_found = reduce(split(sv_found, sv_found$name), 
                           min.gapwidth = 10000000)
+                          
+        # We would also remove any pieces mapped to other chromosomes. 
         sv_found = as.data.frame(sv_found)
         colnames(sv_found) = c("", "name", "chrom", "start", "end", "width", "strand")
         sv_found = sv_found[sv_found$chrom == chrom, ]
+        
         output$matching_sv = renderTable({sv_found},
                                          striped = TRUE, hover = TRUE, 
                                          bordered = TRUE, align = "c")
