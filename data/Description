@@ -1,0 +1,5 @@
+gnomAD SV and CNV BED files were downloaded from gnomAD websites. MANE transcript and meta data were downloaded fron NCBI. Please see respective script for detail of processing. Processed SV file was separated into smaller ones by chromosomes.  
+
+hg38 to hg19 chain file for genome coordinate liftover was downloaded from UCSC genome browser. 
+
+The data were converted into compressed *.rds files for use in the app. 
