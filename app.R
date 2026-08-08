@@ -286,6 +286,7 @@ server <- function(input, output, session) {
         }  
         if (length(sv_found) >= 1) {            
             sv_found = as.data.frame(rev(sv_found))
+            sv_found = sv_found[order(sv_found$width), ]
             colnames(sv_found)[1] = "chrom"
             
             # Write out the list of SVs. 
@@ -297,7 +298,7 @@ server <- function(input, output, session) {
             })
             
             # Display in the scale of longest interval,
-            # which help to judge the match.
+            # which helps to judge the match.
             sv_pos = sv_found[, 1:3]
             colnames(sv_pos) = c("chrom", "start", "end")
             pos = rbind(gene_df[, 1:3], sv_pos)
@@ -347,6 +348,7 @@ server <- function(input, output, session) {
         sv_found = match_cnv()
         req(length(sv_found) >= 1)
         chrom = seqlevels(sv_found)
+        mini_width = 0.8 * min(width(sv_found)) 
         sv_found = unlist(liftOver(sv_found, hg38_19))
         
         # Liftover may break a large interval into pieces with different gaps. 
@@ -354,14 +356,23 @@ server <- function(input, output, session) {
         sv_found = reduce(split(sv_found, sv_found$name), 
                           min.gapwidth = 10000000)
                           
-        # We would also remove any pieces mapped to other chromosomes. 
+        # We would also remove any pieces mapped to other chromosomes, 
+        # and anything that is less than 80% of the size of the original entries.
         sv_found = as.data.frame(sv_found)
-        colnames(sv_found) = c("", "name", "chrom", "start", "end", "width", "strand")
-        sv_found = sv_found[sv_found$chrom == chrom, ]
-        
+        sv_found = sv_found[, 2:length(sv_found)]
+        colnames(sv_found) = c("name", "chrom", "start", "end", "width", "strand")
+        sv_found = sv_found[sv_found$chrom == chrom & sv_found$width >= mini_width, ]
+        sv_found = sv_found[order(sv_found$width), ]
+        sv_list = paste(paste0(sv_found$name, " (", sv_found$chrom, ":", 
+                         sv_found$start, "-", sv_found$end, ")"), collapse = ", ")
+
         output$matching_sv = renderTable({sv_found},
                                          striped = TRUE, hover = TRUE, 
                                          bordered = TRUE, align = "c")
+        output$error = renderUI({
+            HTML(paste("hg19 lifeover: ", "<br>",
+                    shiny::tags$span(paste(sv_list), style = "color: green;")))
+        })
     })
     
     # Clear search result when needed.
