@@ -9,9 +9,6 @@ library(bslib)
 library(GenomicRanges)
 library(Gviz)
 library(DT)
-library(Biostrings)
-library(refseqR)
-
 
 ui <- page_sidebar(
     theme = bs_theme(version = 5, bootswatch = "journal"),
@@ -49,31 +46,35 @@ ui <- page_sidebar(
                      value = ""),
         radioButtons("variant", HTML("<b>Variant</b>"), 
                      choices = c("SV", "CNV"),
-                     selected = "SV"),
+                     selected = "SV",
+                     inline = TRUE),
         radioButtons("type", HTML("<b>Type</b>"), 
                      choices = c("del", "dup"),
-                     selected = "del"),  
+                     selected = "del",
+                     inline = TRUE),  
         radioButtons("limit", HTML("<b>Limit</b>
                                       <br>by exon not first or last"), 
                      choices = c("yes", "no"),
-                     selected = "no"),
+                     selected = "no", 
+                     inline = TRUE),
         radioButtons("genome", HTML("<b>Genome</b>
                                     <br>h38 to hg19 liftover for the result"), 
                      choices = c("hg19", "hg38"),
-                     selected = "hg38"),
+                     selected = "hg38",
+                     inline = TRUE),
         div(style = "text-align: center;",
             actionButton("search", "Search", 
                          style = "background-color: #01774e;
                                  font-size: 18px; color: white;
                                  height: 40px; width: 120px;")
         ),
-        sliderInput("zoom", HTML("<b>Zoom</b>"),
+        sliderInput("zoom", HTML("<b>Zoom in</b>"),
                     min = 0, max = 3, step = 0.5, value = 0),
         radioButtons("get_met", HTML("<b>getMet</b>
                                       <br>retrieve methionine position"),
                      choices = c("yes", "no"),
-                     selected = "no"),
-        #shiny::tags$br(),
+                     selected = "no",
+                     inline = TRUE),
         div(style = "text-align: center;",
             actionButton("clear", "Clear", 
                          style = "background-color: #01774e;
@@ -289,7 +290,7 @@ server <- function(input, output, session) {
                       ncol = width, byrow = TRUE)
         ticks <- unique(c(seq(1, width, by = 10), width))
         
-        par(mar = c(0.2, 2.5, 2.5, 0.2)) # Tight margins
+        par(mar = c(0.3, 2.2, 1.2, 0.3)) # Tight margins
         plot(1, type = "n", xlim = c(0.5, width + 0.5), 
              ylim = c(0.5, rows + 0.8), 
              xaxt = "n", yaxt = "n", xlab = "", ylab = "", 
@@ -310,17 +311,21 @@ server <- function(input, output, session) {
     }
     
     get_met = reactive({
+        mane_sum = readRDS("rdsData/mane1.4_summary.rds")
         gene_df = gene_df()[[1]]
+        
         transcript = unique(gene_df$transcript)
-        protein = refseq_RNA2protein(transcript)
+        protein = mane_sum[mane_sum$transcript == transcript, ]$protein
         seq <- refseq_AAseq(protein)[[1]]
         met_pos = matchPattern("M", seq)
         met_pos = as.data.frame(met_pos)$start
         fasta = as.character(seq)
         fasta_length = nchar(fasta)
+        fasta_url = paste0("https://ncbi.nlm.nih.gov/protein/", protein, "?report=fasta")
+        fasta_link = paste0('<a href=', fasta_url, ' target="_blank"', '>(fasta)</a>')
         size_before = round((met_pos-1)/fasta_length*100, 1)
         met_pos = paste0(met_pos, "(", size_before, ")", collapse = ", ")
-        list(met_pos, fasta, protein)
+        list(met_pos, fasta, protein, fasta_link)
     })
     
     ## Outputs
@@ -504,18 +509,22 @@ server <- function(input, output, session) {
     
     # Show methionine position for the corresponding protein sequence.
     observeEvent(input$get_met == "yes", {
+        library(Biostrings)
+        library(refseqR)
         req(input$gene)
         
         met_pos = get_met()[[1]]
         fasta = get_met()[[2]]
         protein = get_met()[[3]]
+        fasta_link = get_met()[[4]]
         # Only display up to 900aa. 
         if (nchar(fasta) > 900) fasta = substr(fasta, 1, 900)
         output$error = renderUI({
             HTML(paste0(
                 "<span style='color:red;'>The methionine position (% of size before):</span>",
                 "<span style='color:blue;'>", met_pos, "</span>",
-                "<span style='color:green;'>Display protein sequence (up to 900aa): ", protein, "</span>"))
+                "<span style='color:green;'>Display protein sequence (up to 900aa): ", 
+                        protein, " ", fasta_link,"</span>"))
         })
         output$gene_viz = renderPlot({plot_protein(fasta, target = "M", width = 100)})
     })
