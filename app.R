@@ -6,7 +6,6 @@
 
 library(shiny)
 library(bslib)
-library(GenomicRanges)
 library(Gviz)
 library(DT)
 
@@ -20,8 +19,7 @@ ui <- page_sidebar(
             shiny::tags$i("Searching exon del/dup in gnomAD structure variant data"), 
             style = "margin-top: 5px; font-weight: bold; font-size: 1rem;"),
         shiny::tags$a(
-            href = "https://github.com/wshuchen/gnomADsvSeek.git", 
-            "GitHub repository",
+            href = "https://github.com/wshuchen/gnomADsvSeek.git", "GitHub repository",
             target = "_blank",
             style = "margin-top: 5px; margin-right: 30px; 
                     font-size: 1rem; color: white; 
@@ -32,35 +30,39 @@ ui <- page_sidebar(
     ## Input
     sidebar = sidebar(
         width = 300,
-        p("hg38 MANE transcripts", 
+        p("hg38 MANE Select + Clinical", 
           style = "color: green; font-weight: bold; font-size: 18px;"),
-        p("(e.g. PKD1 deletion of exons 22-30)", style = "font-size: 1rem;"),
-        p("Please verify the result.", style = "color: green;"),
+        p("Do verify the result for clitical usage", style = "color: red;"),
+        hr(),
+        p("e.g. PKD1 deletion of exons 22-30", style = "font-size: 1rem;"),
         
-        textInput("gene", HTML("<b>Gene name</b>"),
+        textInput("gene", HTML("<b>Gene</b>"),
                   value = "",
                   placeholder = "PKD1 OR pkd1"),
-        numericInput("exon_from", HTML("<b>Exon from</b>"),
-                     value = ""),
-        numericInput("exon_to", HTML("<b>Exon to</b>"),
-                     value = ""),
-        radioButtons("variant", HTML("<b>Variant</b>"), 
-                     choices = c("SV", "CNV"),
-                     selected = "SV",
-                     inline = TRUE),
+        div(
+            class = "from-group shiny-input-container",
+            shiny::tags$label("Exon", class = "control-label", 
+                              style = "font-weight: bold;"),
+            div(
+                style = "display: flex; align-items: center; gap: 20px; width: 100%;",
+                div(style = "flex: 1;", numericInput("exon_from", "from", 
+                                                     value = "", width = "100%")),
+                shiny::tags$span("-", style = "front-weigth: bold; padding-top: 10px;"), 
+                div(style = "flex: 1;", numericInput("exon_to", "to", 
+                                                     value = "", width = "100%"))
+            )
+        ),
         radioButtons("type", HTML("<b>Type</b>"), 
                      choices = c("del", "dup"),
                      selected = "del",
-                     inline = TRUE),  
-        radioButtons("limit", HTML("<b>Limit</b>
-                                      <br>by exon not first or last"), 
-                     choices = c("yes", "no"),
-                     selected = "no", 
                      inline = TRUE),
-        radioButtons("genome", HTML("<b>Genome</b>
-                                    <br>h38 to hg19 liftover for the result"), 
-                     choices = c("hg19", "hg38"),
-                     selected = "hg38",
+        radioButtons("variant", HTML("<b>Database</b>"), 
+                     choices = c("SV", "CNV"),
+                     selected = "SV",
+                     inline = TRUE),
+        radioButtons("limit", HTML("<b>Limit</b><br>by exon not first or last"), 
+                     choices = c("no", "yes"),
+                     selected = "no", 
                      inline = TRUE),
         div(style = "text-align: center;",
             actionButton("search", "Search", 
@@ -68,13 +70,24 @@ ui <- page_sidebar(
                                  font-size: 18px; color: white;
                                  height: 40px; width: 120px;")
         ),
-        sliderInput("zoom", HTML("<b>Zoom in</b>"),
+        sliderInput("zoom", HTML("<b>Zoom</b>"),
                     min = 0, max = 3, step = 0.5, value = 0),
-        radioButtons("get_met", HTML("<b>getMet</b>
-                                      <br>retrieve methionine position"),
-                     choices = c("yes", "no"),
-                     selected = "no",
-                     inline = TRUE),
+        div(
+            class = "from-group shiny-input-container",
+            shiny::tags$label("Liftover", class = "control-label;",
+                              style = "font-weight: bold;"),
+            shiny::tags$p(style = "margin-top: 2px; margin-bottom: 2px;",
+                          "to hg19 for the matching variants"),
+            checkboxInput("lift_over", NULL, value = FALSE)
+        ),
+        div(
+            class = "from-group shiny-input-container",
+            shiny::tags$label("Methionine", class = "control-label;",
+                              style = "font-weight: bold;"),
+            shiny::tags$p(style = "margin-top: 2px; margin-bottom: 2px;",
+                          "retrieve Met positions"),
+            checkboxInput("get_met", NULL, value = FALSE)
+        ),
         div(style = "text-align: center;",
             actionButton("clear", "Clear", 
                          style = "background-color: #01774e;
@@ -111,18 +124,31 @@ server <- function(input, output, session) {
         rownames(gene_df) = NULL
         exon_number = as.numeric(gene_df$exon[grep("[0-9.*]", gene_df$exon)])
         exon_number = exon_number[length(exon_number)]
+        gene_start = min(gene_df$start)
+        gene_end = max(gene_df$end)
+        gene_length = sum(gene_df$width)
+        # Add a link to UCSC Genome Browser.
+        ucsc_url = paste0(
+            "https://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38",
+            "&lastVirtModeType=default&lastVirtModeExtraState=",
+            "&virtModeType=default&virtMode=0&nonVirtPosition=",
+            "&position=", gene_df$chrom[1],
+            "%3A", gene_start-250, "%2D", gene_end+250,
+            "&hgsid=4149631675_9ZnuSDlSkew8PA8AhS3LI7gC298D"
+        )
+        ucsc_link = paste0('<a href=', ucsc_url, ' target="_blank"', '>(UCSC)</a>')
         gene_info = paste(toupper(input$gene), 
-                          paste0(unique(gene_df$chrom), ":",
-                                 gene_df$start[1], "-", 
-                                 gene_df$end[length(gene_df$end)]),
-                                 unique(gene_df$transcript),
-                                 exon_number, "exons")
+                          paste0(gene_df$chrom[1], ":",
+                                 gene_start, "-", gene_end),
+                          gene_df$transcript[1], 
+                          exon_number, "exons", 
+                          paste0(gene_length, " bp"))
         
         options(ucscChromosomeNames = FALSE)
         gene_track = GeneRegionTrack(gene_df, 
                                      genome = "hg38",
                                      name = toupper(input$gene))
-        list(gene_df, gene_info, gene_track, exon_number)
+        list(gene_df, gene_info, gene_track, exon_number, ucsc_link)
     })
     
     ## Query CNV data and view
@@ -335,8 +361,10 @@ server <- function(input, output, session) {
         gene_df = gene_df()[[1]]
         gene_info = gene_df()[[2]]
         gene_track = gene_df()[[3]]
+        ucsc_link = gene_df()[[5]]
         ax <- GenomeAxisTrack()
         output$gene_viz = renderPlot({plotTracks(list(ax, gene_track))})
+        gene_df$transcript = NULL
         output$gene_exon = renderDT({datatable(gene_df, 
                                 options = list(
                                     columnDefs = list(
@@ -346,7 +374,11 @@ server <- function(input, output, session) {
                                     rownames = FALSE
                                 )
                             })
-        output$gene_info = renderUI(p(gene_info, style = "color: green;"))
+        output$gene_info = renderUI({
+                 HTML(paste0(
+                    "<span style = 'color: green;'>", gene_info, " ", ucsc_link, 
+                    "</span>"))   
+        })
     })
     
     # Display gene and CNV info; validate the input exon range.
@@ -371,7 +403,7 @@ server <- function(input, output, session) {
         cnv_info = cnv_df()[[2]]
         cnv_track = cnv_df()[[3]]
         ax <- GenomeAxisTrack()
-        output$gene_viz = renderPlot({plotTracks(list(ax, cnv_track))})
+        output$gene_viz = renderPlot({plotTracks(list(ax, cnv_track), lwd=2)})
         output$cnv_info = renderTable({cnv_info},
                                        striped = TRUE, hover = TRUE, 
                                        bordered = TRUE, align = "c", digit = 1)
@@ -394,8 +426,13 @@ server <- function(input, output, session) {
         
         sv_found = match_cnv()
         if (length(sv_found) == 0) {
-            output$error = renderUI({p(paste("No overlapping SV found."), 
-                                       style = "color: red;")})
+            output$error = renderUI({
+                HTML(paste0(
+                    "<span style = 'color: green;'>", "Query variant - ", 
+                        cnv_info, "</span>",
+                    "<span style = 'color: red;'>No overlapping SV/CNV found.</span>"
+                    )) 
+            })
         }  
         if (length(sv_found) >= 1) {            
             sv_found = as.data.frame(rev(sv_found))
@@ -425,7 +462,8 @@ server <- function(input, output, session) {
                 HTML(paste0(
                     "<span style = 'color: green;'>Query variant - ", cnv_info, "</span>",
                     "<span style = 'color: red;'>Wholely overlapping SVs:</span>",
-                    "<span style = 'color: blue;'>", SV, "</span>"))
+                    "<span style = 'color: blue;'>", SV, "</span>"
+                    ))
                                             
             })
             
@@ -472,8 +510,10 @@ server <- function(input, output, session) {
     })
     
 	# h38 to hg19 coordinate liftover for the result if requested.
-    observeEvent(input$genome == "hg19", {
+    observeEvent(input$lift_over, {
+        req(input$lift_over)
     	library(rtracklayer)
+        
         # Chain file for hg38 to hg19 coordinate liftover.
         hg38_19 = readRDS("rdsData/hg38ToHg19.over.chain.rds")
         
@@ -503,7 +543,8 @@ server <- function(input, output, session) {
         output$error = renderUI({
                     HTML(paste0(
                         "<span style = 'color: red;'>hg19 lifeover:</span>",
-                        "<span style = 'color: blue;'>", sv_list, "</span>"))
+                        "<span style = 'color: blue;'>", sv_list, "</span>"
+                        ))
         })
     })
     
@@ -512,19 +553,23 @@ server <- function(input, output, session) {
         library(Biostrings)
         library(refseqR)
         req(input$gene)
+        req(input$get_met)
         
         met_pos = get_met()[[1]]
         fasta = get_met()[[2]]
         protein = get_met()[[3]]
         fasta_link = get_met()[[4]]
-        # Only display up to 900aa. 
-        if (nchar(fasta) > 900) fasta = substr(fasta, 1, 900)
+        fasta_length = nchar(fasta)
+        # Only display up to 1000aa. 
+        if (fasta_length > 1000) fasta = substr(fasta, 1, 1000)
         output$error = renderUI({
             HTML(paste0(
-                "<span style='color:red;'>The methionine position (% of size before):</span>",
+                "<span style='color:red;'>The methionine position (% of size before,
+                (position - 1)/total aa) x 100:</span>",
                 "<span style='color:blue;'>", met_pos, "</span>",
-                "<span style='color:green;'>Display protein sequence (up to 900aa): ", 
-                        protein, " ", fasta_link,"</span>"))
+                "<span style='color:green;'>Display protein sequence (up to 1000aa): ", 
+                        protein, " ", fasta_length, " aa ", fasta_link,"</span>"
+                ))
         })
         output$gene_viz = renderPlot({plot_protein(fasta, target = "M", width = 100)})
     })

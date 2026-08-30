@@ -2135,7 +2135,7 @@
         "Package": "curl",
         "Type": "Package",
         "Title": "A Modern and Flexible Web Client for R",
-        "Version": "7.1.0",
+        "Version": "8.0.0",
         "Authors@R": "c(\n    person(\"Jeroen\", \"Ooms\", role = c(\"aut\", \"cre\"), email = \"jeroenooms@gmail.com\",\n      comment = c(ORCID = \"0000-0002-4035-0289\")),\n    person(\"Hadley\", \"Wickham\", role = \"ctb\"),\n    person(\"Posit Software, PBC\", role = \"cph\"))",
         "Description": "Bindings to 'libcurl' <https://curl.se/libcurl/> for performing fully\n    configurable HTTP/FTP requests where responses can be processed in memory, on\n    disk, or streaming via the callback or connection interfaces. Some knowledge\n    of 'libcurl' is recommended; for a more-user-friendly web client see the \n    'httr2' package which builds on this package with http specific tools and logic.",
         "License": "MIT + file LICENSE",
@@ -2145,16 +2145,16 @@
         "Suggests": "spelling, testthat (>= 1.0.0), knitr, jsonlite, later,\nrmarkdown, httpuv (>= 1.4.4), webutils",
         "VignetteBuilder": "knitr",
         "Depends": "R (>= 3.0.0)",
-        "RoxygenNote": "7.3.2",
         "Encoding": "UTF-8",
         "Language": "en-US",
+        "Config/roxygen2/version": "8.0.0",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-04-21 14:47:54 UTC; jeroen",
+        "Packaged": "2026-08-25 12:49:41 UTC; jeroen",
         "Author": "Jeroen Ooms [aut, cre] (ORCID: <https://orcid.org/0000-0002-4035-0289>),\n  Hadley Wickham [ctb],\n  Posit Software, PBC [cph]",
         "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
         "Repository": "CRAN",
-        "Date/Publication": "2026-04-22 09:40:02 UTC",
-        "Built": "R 4.6.1; x86_64-pc-linux-gnu; 2026-08-24 12:33:50 UTC; unix"
+        "Date/Publication": "2026-08-25 16:40:02 UTC",
+        "Built": "R 4.6.1; x86_64-pc-linux-gnu; 2026-08-28 17:03:09 UTC; unix"
       }
     },
     "data.table": {
@@ -4622,7 +4622,7 @@
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "app.R": {
-      "checksum": "ce8bfa3657d085ae5b4715b1b3cd1099"
+      "checksum": "9c9ab6fecc4fae70a12c775802cd2920"
     },
     "data/Description": {
       "checksum": "8dea7b1b20000d49b492ebcdda3ee720"
@@ -4720,8 +4720,11 @@
     "rdsData/mane1.4_exon.rds": {
       "checksum": "a2e72f1575106170bd86abd147cb6431"
     },
+    "rdsData/mane1.4_summary.rds": {
+      "checksum": "2d41eb8f0905e2a45c73d6c62638d489"
+    },
     "rdsData/mane1.4_transcript.rds": {
-      "checksum": "237b3794d382c73f2b9ae7ab845a6d17"
+      "checksum": "6316cf1de071c36d1ca9417c5f5c6bdf"
     },
     "rdsData/SV/gnomADsv_chr1.rds": {
       "checksum": "10e7a6c9077ad7e5d4f075a49f7725a3"
