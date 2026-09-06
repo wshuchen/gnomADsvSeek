@@ -6,7 +6,6 @@
 
 library(shiny)
 library(bslib)
-library(Gviz)
 library(DT)
 
 ui <- page_sidebar(
@@ -32,23 +31,28 @@ ui <- page_sidebar(
         width = 300,
         p("hg38 MANE Select + Clinical", 
           style = "color: green; font-weight: bold; font-size: 18px;"),
-        p("Do verify the result for clitical usage", style = "color: red;"),
+        p("For clitical usage, verify the result", style = "color: red;"),
         hr(),
-        p("e.g. PKD1 deletion of exons 22-30", style = "font-size: 1rem;"),
+        p("e.g. PKD1 deletion of exons 22-30, or chr12:66767-389320)", 
+                    style = "font-size: 1rem;"),
         
-        textInput("gene", HTML("<b>Gene</b>"),
+        radioButtons("by_what", HTML("<b>Search by</b>"), 
+                     choices = c("gene", "interval"),
+                     selected = "gene",
+                     inline = TRUE),
+        textInput("gene", NULL,
                   value = "",
-                  placeholder = "PKD1 OR pkd1"),
+                  placeholder = "PKD1/pkd1 OR chrN:start-end"),
         div(
             class = "from-group shiny-input-container",
-            shiny::tags$label("Exon", class = "control-label", 
+            shiny::tags$label("Exon if by gene", class = "control-label", 
                               style = "font-weight: bold;"),
             div(
                 style = "display: flex; align-items: center; gap: 20px; width: 100%;",
-                div(style = "flex: 1;", numericInput("exon_from", "from", 
+                div(style = "flex: 1;", numericInput("exon_from", "from", min = 1,
                                                      value = "", width = "100%")),
                 shiny::tags$span("-", style = "front-weigth: bold; padding-top: 10px;"), 
-                div(style = "flex: 1;", numericInput("exon_to", "to", 
+                div(style = "flex: 1;", numericInput("exon_to", "to", min = 1,
                                                      value = "", width = "100%"))
             )
         ),
@@ -113,13 +117,14 @@ ui <- page_sidebar(
 )
 
 server <- function(input, output, session) {
+    library(Gviz)
     
     ## MANE and MANE Plus Clinical exon table, v1.4, hg38.
     mane_tx = readRDS("rdsData/mane1.4_transcript.rds")
-
+    
     ## Query gene data and view
     gene_df = reactive({
-        req(input$gene)
+        req(input$by_what == "gene")
         gene_df = mane_tx[mane_tx$symbol == toupper(input$gene), ]
         rownames(gene_df) = NULL
         exon_number = as.numeric(gene_df$exon[grep("[0-9.*]", gene_df$exon)])
@@ -144,127 +149,138 @@ server <- function(input, output, session) {
                           exon_number, "exons", 
                           paste0(gene_length, " bp"))
         
-        options(ucscChromosomeNames = FALSE)
         gene_track = GeneRegionTrack(gene_df, 
                                      genome = "hg38",
-                                     name = toupper(input$gene))
+                                     name = toupper(input$gene),
+                                     #fill = "#005283", # UCSC color
+                                     background.title = "#8B5A2B",
+                                     col.title = "white",
+                                     lwd =  2)
         list(gene_df, gene_info, gene_track, exon_number, ucsc_link)
     })
     
     ## Query CNV data and view
+    ## Function to parse the interval input into a dataframe.
+    get_coord = function(interval) {
+        req(input$gene)
+        pattern = "([Cc]hr\\d+)[:\\s,-_]\\s*([\\d,]+)\\s*[:\\s,-]\\s*([\\d,]+)\\s*$"
+        matches <- regmatches(interval, regexec(pattern, interval, perl = TRUE))[[1]]
+        req(nzchar(matches) != 0)
+        chrom = matches[2]
+        start <- as.numeric(gsub(",", "", matches[3]))
+        end   <- as.numeric(gsub(",", "", matches[4]))
+        if (end >= start) {
+            return(data.frame(chrom = chrom, start = start, end = end))
+        } else {
+            return(data.frame())
+        }
+    }
+    
     cnv_df = reactive({
-        exon_from = input$exon_from
-        exon_to = input$exon_to
-        gene_df = gene_df()[[1]]
-        gene_track = gene_df()[[3]]
+        req(input$gene)
+        if (input$by_what == "gene") {
+            exon_from = input$exon_from
+            exon_to = input$exon_to
+            gene_df = gene_df()[[1]]
+            gene_track = gene_df()[[3]]
+            
+            cnv_df = gene_df[gene_df$exon %in% exon_from:exon_to, ]
+            exon_range = paste0(exon_from, "-", exon_to)
+            cnv_start = min(cnv_df$start)
+            cnv_end = max(cnv_df$end)
+            cnv_cds = cnv_df$feature =="cds"
+            cds_size = sum(cnv_df[cnv_cds, ]$width)
+            cds_start = min(as.numeric(gsub("\\-.*", "", cnv_df[cnv_cds, ]$CDS)))
+            cds_end = max(as.numeric(gsub(".*\\-", "", cnv_df[cnv_cds, ]$CDS)))
+            cds_range = paste0(cds_start, "_", cds_end)
+            gene_cds = gene_df$feature =="cds"
+            percentage = round(cds_size/sum(gene_df[gene_cds, ]$width)*100, 1)
+            frame = ifelse(cds_size %% 3 == 0, "in frame", "out of frame")
+            cnv_info = data.frame(chrom = unique(cnv_df$chrom),
+                                  start = cnv_start,
+                                  end = cnv_end,
+                                  width = cnv_end - cnv_start + 1,
+                                  "exon range" = exon_range,
+                                  "CDS range" = cds_range,
+                                  "CDS size" = cds_size,
+                                  "CDS %" = percentage,
+                                  frame = frame, 
+                                  check.names = FALSE)
+            cnv_track = GeneRegionTrack(cnv_df, 
+                                        genome = "hg38",
+                                        name = "CNV",
+                                        background.panel = "#F0FFFF",
+                                        background.title = "#d65b00", 
+                                        lwd =  2, 
+                                        cex.title = 1.2)
+            cnv_track = HighlightTrack(list(gene_track, cnv_track),
+                                       start = min(cnv_df$start),
+                                       end = max(cnv_df$end))
+            interval_df = data.frame()
+            } 
         
-        cnv_df = gene_df[gene_df$exon %in% exon_from:exon_to, ]
-        exon_range = paste0(exon_from, "-", exon_to)
-        cnv_cds = cnv_df$feature =="cds"
-        cds_size = sum(cnv_df[cnv_cds, ]$width)
-        cds_start = min(as.numeric(gsub("\\-.*", "", cnv_df[cnv_cds, ]$CDS)))
-        cds_end = max(as.numeric(gsub(".*\\-", "", cnv_df[cnv_cds, ]$CDS)))
-        cds_range = paste0(cds_start, "_", cds_end)
-        gene_cds = gene_df$feature =="cds"
-        percentage = round(cds_size/sum(gene_df[gene_cds, ]$width)*100, 1)
-        frame = ifelse(cds_size %% 3 == 0, "in frame", "out of frame")
-        cnv_info = data.frame(chrom = unique(cnv_df$chrom),
-                              start = min(cnv_df$start),
-                              end = max(cnv_df$end),
-                              width = sum(cnv_df$width),
-                              "exon range" = exon_range,
-                              "CDS range" = cds_range,
-                              "CDS size" = cds_size,
-                              "CDS %" = percentage,
-                              frame = frame, 
-                              check.names = FALSE)
-        
-        options(ucscChromosomeNames = FALSE)
-        cnv_track = GeneRegionTrack(cnv_df, 
-                                    genome = "hg38",
-                                    name = "CNV",
-                                    background.panel = "#F0FFFF",
-                                    background.title = "#d65b00")
-        cnv_track = HighlightTrack(list(gene_track, cnv_track),
-                                   start = min(cnv_df$start),
-                                   end = max(cnv_df$end))
-        list(cnv_df, cnv_info, cnv_track)
+        if (input$by_what == "interval") {
+            cnv_df = get_coord(input$gene)
+            cnv_info = cnv_df
+            # Get the genes this interval overlaps. 
+            cnv_gr = makeGRangesFromDataFrame(cnv_df)
+            mane = mane_tx[mane_tx$chrom == seqlevels(cnv_gr), ]
+            mane_gr = makeGRangesFromDataFrame(mane, 
+                                               keep.extra.columns = TRUE)
+            ol = findOverlaps(cnv_gr, mane_gr, )
+            genes = mane_gr[subjectHits(ol)]$symbol
+            interval_df = mane[mane$symbol %in% genes, ]
+            colnames(interval_df)[1] = "chrom"
+            interval_track = GeneRegionTrack(interval_df,
+                                             genome = "hg38",
+                                             name = "genes",
+                                             transcriptAnnotation = "symbol",
+                                             background.title = "#8B5A2B", 
+                                             lwd = 3, 
+                                             cex.title = 1.2)
+            cnv_track = GeneRegionTrack(cnv_df, 
+                                        genome = "hg38",
+                                        name = "CNV",
+                                        background.panel = "#F0FFFF",
+                                        background.title = "#d65b00", 
+                                        lwd =  2,
+                                        cex.title = 1.2)
+            cnv_track = HighlightTrack(list(interval_track, cnv_track),
+                                       start = cnv_df$start,
+                                       end = cnv_df$end)
+        }
+        list(cnv_df, cnv_info, cnv_track, interval_df)
     })
     
-    ## Search the database for matching SVs.
-    match_cnv = reactive({
-        exon_from = input$exon_from
-        exon_to = input$exon_to
-        
-        gene_df = gene_df()[[1]]
-        exon_number = gene_df()[[4]]
-        
-        cnv_df = cnv_df()[[1]]
+    ## Function to retrieve the matching variants.
+    get_match = function(cnv_df) {
+        cnv_chrom = cnv_df$chrom[1]
         cnv_gr = GRanges(seqnames = cnv_df$chrom[1],
-                         ranges = IRanges(min(cnv_df$start),
-                                          max(cnv_df$end)),
+                         ranges = IRanges(min(cnv_df$start), max(cnv_df$end)),
                          strand = cnv_df$strand[1])
         
-        # Get the interval containing the query CNV.
-        cnv_chrom = unique(cnv_df$chrom)
         if (input$variant == "SV") {
             sv_file = paste0("rdsData/SV/gnomADsv_", cnv_chrom, ".rds")
             sv = readRDS(sv_file)
             sv_select = sv[sv$chrom == cnv_chrom &
-                               sv$type == toupper(input$type), ]    
+                               sv$type == toupper(input$type), ]
         } else {
             cnv = readRDS("rdsData/gnomADcnv.rds")
             sv_select = cnv[cnv$chrom == cnv_chrom &
-                                cnv$type == toupper(input$type), ] 
+                                cnv$type == toupper(input$type), ]
         }
-        sv_select_gr = GRanges(seqnames = sv_select$chrom,
-                               ranges = IRanges(sv_select$start, sv_select$end))
-        mcols(sv_select_gr) = sv_select[4:length(sv_select)]    
-        
+        sv_select_gr = makeGRangesFromDataFrame(sv_select, 
+                                                keep.extra.columns = TRUE)
         sv_hits = findOverlaps(cnv_gr, sv_select_gr, type = "within")
         hits_index = subjectHits(sv_hits)
         sv_found = sv_select_gr[hits_index]
-        
-        # Restrict the range to within the exon not first or last,
-        # open in both ends (exon 1 and last exon), with strand consideration.
-        # Prepare a exon range table from the gene data, merge utr in exon
-        # if they have the same exon number. 
-        exons = gene_df[, c("chrom", "start", "end", "strand", "exon")]
-        starts = aggregate(start ~ exon, data = exons, min)
-        ends = aggregate(end ~ exon, data = exons, max)
-        start_end = merge(starts, ends)
-        start_end$chrom = c(unique(exons$chrom))
-        start_end$strand = c(unique(exons$strand))
-        exon_range = start_end[, c("chrom", "start", "end", "strand", "exon")]
-
-        if (input$limit == "yes") {
-            if (exon_from > 1) {
-                if (exon_range$strand[1] == "+") {
-                    start_limit = exon_range$end[exon_from-1]
-                    sv_found = sv_found[start(sv_found) >= start_limit[1]]
-                } else {
-                    start_limit = exon_range$start[exon_from-1]
-                    sv_found = sv_found[end(sv_found) <= start_limit[1]]
-                }
-            }
-            
-            if (exon_to < exon_number) {
-                if (exon_range$strand[1] == "+") {
-                    end_limit = exon_range$start[exon_to+1]
-                    sv_found = sv_found[end(sv_found) <= end_limit[1]]
-                } else {
-                    end_limit = exon_range$end[exon_to+1]
-                    sv_found = sv_found[start(sv_found) >= end_limit[1]]
-                }           
-            }
-        }
 
         # Add back the frequency data removed for smaller file size.
         if (input$variant == "SV") {
-            mcols(sv_found)$frequency = format(sv_found$ac/sv_found$an,
-                                               scientific = FALSE)
+        sv_found$frequency = format(sv_found$ac/sv_found$an,
+                                    scientific = FALSE)
         } else {
-            mcols(sv_found)$frequency = format(sv_found$sc/sv_found$sn, 
+            sv_found$frequency = format(sv_found$sc/sv_found$sn,
                                                scientific = FALSE)
         }
         # Name in uppercase in gnomAD browser
@@ -280,33 +296,75 @@ server <- function(input, output, session) {
         get_symbol = function(sv_name) {
             sv_gr = sv_found[sv_found$name == sv_name]
             mane = mane_tx[mane_tx$chrom == seqlevels(sv_gr), ]
-            mane_gr = GRanges(seqnames = mane$chrom, 
-                              ranges = IRanges(start = mane$start,
-                                               end = mane$end))
-            mcols(mane_gr)$symbol = mane$symbol
+            mane_gr = makeGRangesFromDataFrame(mane, 
+                                               keep.extra.columns = TRUE)
+            mane_gr = sort(mane_gr)
             ol = findOverlaps(sv_gr, mane_gr)
             mane_ol = mane_gr[subjectHits(ol)]
             symbols = unique(mane_ol$symbol)
-            if (length(symbols) <= 3) {
+            if (length(symbols) <= 10) {
                 return(paste(symbols, collapse = ", "))
             } else {
                 n = length(symbols)
-                symbols = paste(symbols[1:3], collapse = ", ")
-                return(paste(symbols, "and other", n, "MANE genes"))
+                symbols = paste(symbols[1:10], collapse = ", ")
+                return(paste(symbols, ", and other", n-10, "MANE gene(s)"))
             }
         }
         
         if (length(sv_found) >= 1) {
             symbols = lapply(sv_found$name, function(x) (get_symbol(x)))
-            if (input$variant == "SV") {
-                sv_found$genes = unlist(symbols) 
-            } else {
-                sv_found$genes = unlist(symbols)
+            sv_found$genes = unlist(symbols)
+        }
+        return(sv_found)
+    }
+    
+    ## Search the database for matching SVs.
+    match_cnv = reactive({
+        cnv_df = cnv_df()[[1]]
+        sv_found = get_match(cnv_df)
+
+        if (input$by_what == "gene") {
+            exon_from = input$exon_from
+            exon_to = input$exon_to
+            gene_df = gene_df()[[1]]
+            exon_number = gene_df()[[4]]
+            
+            # Restrict the range to within the exon not first or last,
+            # open in both ends (exon 1 and last exon), with strand consideration.
+            # Prepare a exon range table from the gene data, merge utr into exon
+            # if they have the same exon number. 
+            exons = gene_df[, c("chrom", "start", "end", "strand", "exon")]
+            starts = aggregate(start ~ exon, data = exons, min)
+            ends = aggregate(end ~ exon, data = exons, max)
+            start_end = merge(starts, ends)
+            start_end$chrom = c(unique(exons$chrom))
+            start_end$strand = c(unique(exons$strand))
+            exon_range = start_end[, c("chrom", "start", "end", "strand", "exon")]
+    
+            if (input$limit == "yes") {
+                if (exon_from > 1) {
+                    if (exon_range$strand[1] == "+") {
+                        start_limit = exon_range$end[exon_from-1]
+                        sv_found = sv_found[start(sv_found) >= start_limit[1]]
+                    } else {
+                        start_limit = exon_range$start[exon_from-1]
+                        sv_found = sv_found[end(sv_found) <= start_limit[1]]
+                    }
+                }
+                if (exon_to < exon_number) {
+                    if (exon_range$strand[1] == "+") {
+                        end_limit = exon_range$start[exon_to+1]
+                        sv_found = sv_found[end(sv_found) <= end_limit[1]]
+                    } else {
+                        end_limit = exon_range$end[exon_to+1]
+                        sv_found = sv_found[start(sv_found) >= end_limit[1]]
+                    }           
+                }
             }
         }
-        sv_found
+       sv_found 
     })
-    
+
     ## Get methionine position
     ## plot protein sequence as a matrix. Function courtesy of Google Gemini.
     plot_protein <- function(seq, target = "M", width = 60, col = "#FF4D4D") {
@@ -316,7 +374,7 @@ server <- function(input, output, session) {
                       ncol = width, byrow = TRUE)
         ticks <- unique(c(seq(1, width, by = 10), width))
         
-        par(mar = c(0.3, 2.2, 1.2, 0.3)) # Tight margins
+        par(mar = c(0.2, 4, 1.2, 0.2)) # Tight margins
         plot(1, type = "n", xlim = c(0.5, width + 0.5), 
              ylim = c(0.5, rows + 0.8), 
              xaxt = "n", yaxt = "n", xlab = "", ylab = "", 
@@ -330,7 +388,7 @@ server <- function(input, output, session) {
             rect((1:width)[valid] - 0.5, y - 0.5, (1:width)[valid] + 0.5, y + 0.5, 
                  col = ifelse(mat[r, valid] %in% target, col, "#EAEAEA"), 
                  border = "white")
-            text((1:width)[valid], y, mat[r, valid], font = 2, cex = 0.75)
+            text((1:width)[valid], y, mat[r, valid], font = 2, cex = 0.8)
             text(-0.2, y, labels = (r - 1) * width + 1, font = 2, cex = 1.0, 
                  adj = c(1, 0.5), xpd = TRUE)
         }
@@ -340,7 +398,7 @@ server <- function(input, output, session) {
         mane_sum = readRDS("rdsData/mane1.4_summary.rds")
         gene_df = gene_df()[[1]]
         
-        transcript = unique(gene_df$transcript)
+        transcript = unique(gene_df$transcript)[1] 
         protein = mane_sum[mane_sum$transcript == transcript, ]$protein
         seq <- refseq_AAseq(protein)[[1]]
         met_pos = matchPattern("M", seq)
@@ -357,14 +415,14 @@ server <- function(input, output, session) {
     ## Outputs
     # Display gene info when gene name is provided.
     observe({
-        req(toupper(input$gene) %in% mane_tx$symbol)
+        req(input$by_what == "gene" && toupper(input$gene) %in% mane_tx$symbol)
         gene_df = gene_df()[[1]]
         gene_info = gene_df()[[2]]
         gene_track = gene_df()[[3]]
         ucsc_link = gene_df()[[5]]
         ax <- GenomeAxisTrack()
         output$gene_viz = renderPlot({plotTracks(list(ax, gene_track))})
-        gene_df$transcript = NULL
+        #gene_df$transcript = NULL
         output$gene_exon = renderDT({datatable(gene_df, 
                                 options = list(
                                     columnDefs = list(
@@ -383,27 +441,29 @@ server <- function(input, output, session) {
     
     # Display gene and CNV info; validate the input exon range.
     observe({
-        gene_df = gene_df()[[1]]
-        gene_info = gene_df()[[2]]
-        gene_track = gene_df()[[3]]
-        exon_number = gene_df()[[4]]
-        
-        req(input$exon_to >= input$exon_from & input$exon_to <= exon_number)
-        output$error = renderUI({
-            validate(need(input$exon_to >= input$exon_from,
-                          "Error: second exon number must >= first exon number."),
-                     need(input$exon_to <= exon_number,
-                          "Error: last exon number out of range."),
-                     paste("You enter", "gene:", toupper(input$gene), 
-                           "exon", input$exon_from,
-                           "to", input$exon_to))
-        })
+        if (input$by_what == "gene") { 
+            gene_df = gene_df()[[1]]
+            gene_info = gene_df()[[2]]
+            gene_track = gene_df()[[3]]
+            exon_number = gene_df()[[4]]
+            
+            req(input$exon_to >= input$exon_from & input$exon_to <= exon_number)
+            output$error = renderUI({
+                validate(need(input$exon_to >= input$exon_from,
+                              "Error: second exon number must >= first exon number."),
+                         need(input$exon_to <= exon_number,
+                              "Error: last exon number out of range."),
+                         paste("You enter", "gene:", toupper(input$gene), 
+                               "exon", input$exon_from,
+                               "to", input$exon_to))
+            })
+        }
         
         cnv_df = cnv_df()[[1]]
         cnv_info = cnv_df()[[2]]
         cnv_track = cnv_df()[[3]]
         ax <- GenomeAxisTrack()
-        output$gene_viz = renderPlot({plotTracks(list(ax, cnv_track), lwd=2)})
+        output$gene_viz = renderPlot({plotTracks(list(ax, cnv_track), lwd = 3)})
         output$cnv_info = renderTable({cnv_info},
                                        striped = TRUE, hover = TRUE, 
                                        bordered = TRUE, align = "c", digit = 1)
@@ -411,18 +471,26 @@ server <- function(input, output, session) {
     
     # Display matching SVs if found.
     observeEvent(c(input$search, input$zoom), {
-        gene_df = gene_df()[[1]]
-        exon_number = gene_df()[[4]]
-        req(input$exon_to >= input$exon_from & 
-                input$exon_to <= exon_number)
-        
         cnv_df = cnv_df()[[1]]
-        cnv_info = paste0(cnv_df$chrom[1], ":", 
-                          min(cnv_df$start), "-", max(cnv_df$end),
-                          input$type)
-        
         cnv_track = cnv_df()[[3]]
         ax <- GenomeAxisTrack()
+        
+        if (input$by_what == "gene") {
+            gene_df = gene_df()[[1]]
+            exon_number = gene_df()[[4]]
+            req(input$exon_to >= input$exon_from && input$exon_to <= exon_number)
+            cnv_info = paste0(cnv_df$chrom[1], ":", 
+                          min(cnv_df$start), "-", max(cnv_df$end),
+                          input$type)
+        }
+        if (input$by_what == "interval") {
+            interval_df = cnv_df()[[4]]
+            cnv_info = paste0(cnv_df$chrom[1], ":", 
+                              cnv_df$start, "-", cnv_df$end,
+                              input$type, " overlapping ", 
+                              length(unique(interval_df$symbol)), " gene(s)"
+            )
+        }
         
         sv_found = match_cnv()
         if (length(sv_found) == 0) {
@@ -433,7 +501,8 @@ server <- function(input, output, session) {
                     "<span style = 'color: red;'>No overlapping SV/CNV found.</span>"
                     )) 
             })
-        }  
+        }
+        
         if (length(sv_found) >= 1) {            
             sv_found = as.data.frame(rev(sv_found))
             sv_found = sv_found[order(sv_found$width), ]
@@ -469,38 +538,68 @@ server <- function(input, output, session) {
             
             # Display in the scale of longest interval,
             # which helps to judge the match.
-            sv_pos = sv_found[c("chrom", "start", "end")]
-            pos = rbind(gene_df[, 1:3], sv_pos)
-            
+            sv_pos = sv_found[, c("chrom", "start", "end")]
+            if (input$by_what == "gene") {
+                co_pos = rbind(gene_df[, 1:3], sv_pos)
+            }
+            if (input$by_what == "interval") {
+                interval_df = cnv_df()[[4]]
+                co_pos = rbind(cnv_df[, 1:3], interval_df[, 1:3], sv_pos)
+            }
+
             found_track = lapply(1:nrow(sv_found),
                                  function(x) {GeneRegionTrack(sv_found[x, ],
-                                        name = as.character(sv_found[x, ]$name))
+                                        name = as.character(sv_found[x, ]$name),
+                                        background.title = "#698B69")
                                  })
-            
-            # Zoom 1: extend the range at half of the gene length 
-            # on both sides
+
+            # Zoom: extend the range at half of the gene length on both sides
             if (input$zoom == 0) {
-                output$gene_viz = renderPlot({
-                    plotTracks(c(list(ax, cnv_track), found_track),
-                               from = min(pos$start), to = max(pos$end))
-                })
+                if (input$by_what == "gene")
+                    output$gene_viz = renderPlot({
+                        plotTracks(c(list(ax, cnv_track), found_track),
+                                   from = min(co_pos$start), to = max(co_pos$end))
+                    })
+                if (input$by_what == "interval") {
+                    output$gene_viz = renderPlot({
+                        plotTracks(c(list(ax, cnv_track), found_track),
+                                   from = min(co_pos$start), to = max(co_pos$end))
+                    })
+                    output$gene_exon = renderDT({datatable(interval_df, 
+                                                   options = list(
+                                                       columnDefs = list(
+                                                           list(className = 'dt-center', 
+                                                                targets = "_all")),
+                                                       searchHighlight = TRUE), 
+                                                  rownames = FALSE)
+                    })   
+                }
             } else {
                 fold = input$zoom
-                if (gene_df$strand[1] == "+") {
-                    gene_length = max(gene_df$end) - min(gene_df$start) + 1
-                    output$gene_viz = renderPlot({
-                        plotTracks(c(list(ax, cnv_track), found_track),
-                               from = min(gene_df$start) - round(gene_length * (3-fold)),
-                               to = max(gene_df$end) + round(gene_length * (3-fold)))
-                    })
-                } else {
-                    gene_length = max(gene_df$start) - min(gene_df$end) - 1
-                    output$gene_viz = renderPlot({
-                        plotTracks(c(list(ax, cnv_track), found_track),
-                               from = min(gene_df$end) - round(gene_length * (3-fold)),
-                               to = max(gene_df$start) + round (gene_length * (3-fold)))                    
-                    })
+                if (input$by_what == "gene") {
+                    gene_length = abs(max(gene_df$end) - min(gene_df$start)) + 1
+                    if (gene_df$strand[1] == "+") {
+                        output$gene_viz = renderPlot({
+                            plotTracks(c(list(ax, cnv_track), found_track),
+                                   from = min(gene_df$start) - round(gene_length * (3-fold)),
+                                   to = max(gene_df$end) + round(gene_length * (3-fold)))
+                        })
+                    } else {
+                        output$gene_viz = renderPlot({
+                            plotTracks(c(list(ax, cnv_track), found_track),
+                                   from = min(gene_df$end) - round(gene_length * (3-fold)),
+                                   to = max(gene_df$start) + round (gene_length * (3-fold)))                    
+                        })
+                    }
                 }
+                if (input$by_what == "interval") {
+                    interval_length = cnv_df$end - cnv_df$start + 1
+                    output$gene_viz = renderPlot({
+                        plotTracks(c(list(ax, cnv_track), found_track),
+                                   from = cnv_df$start - round(interval_length * (3-fold)),
+                                   to = cnv_df$end + round(interval_length * (3-fold)))
+                    })
+                 }
             }
             output$matching_sv = renderTable({sv_found},
                                          striped = TRUE, hover = TRUE, 
@@ -549,7 +648,8 @@ server <- function(input, output, session) {
     })
     
     # Show methionine position for the corresponding protein sequence.
-    observeEvent(input$get_met == "yes", {
+    observeEvent(input$get_met, {
+        req(input$get_met)
         library(Biostrings)
         library(refseqR)
         req(input$gene)
@@ -565,7 +665,7 @@ server <- function(input, output, session) {
         output$error = renderUI({
             HTML(paste0(
                 "<span style='color:red;'>The methionine position (% of size before,
-                (position - 1)/total aa) x 100:</span>",
+                (position - 1)/total aa) x 100):</span>",
                 "<span style='color:blue;'>", met_pos, "</span>",
                 "<span style='color:green;'>Display protein sequence (up to 1000aa): ", 
                         protein, " ", fasta_length, " aa ", fasta_link,"</span>"
