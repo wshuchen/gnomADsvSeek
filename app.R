@@ -33,7 +33,7 @@ ui <- page_sidebar(
           style = "color: green; font-weight: bold; font-size: 18px;"),
         p("For clitical usage, verify the result", style = "color: red;"),
         hr(),
-        p("e.g. PKD1 deletion of exons 22-30, or chr12:66767-389320)", 
+        p("e.g. PKD1 deletion of exons 22-30, or chr12:66767-389320", 
                     style = "font-size: 1rem;"),
         
         radioButtons("by_what", HTML("<b>Search by</b>"), 
@@ -153,9 +153,7 @@ server <- function(input, output, session) {
                                      genome = "hg38",
                                      name = toupper(input$gene),
                                      #fill = "#005283", # UCSC color
-                                     background.title = "#8B5A2B",
-                                     col.title = "white",
-                                     lwd =  2)
+                                     background.title = "#8B5A2B")
         list(gene_df, gene_info, gene_track, exon_number, ucsc_link)
     })
     
@@ -210,9 +208,7 @@ server <- function(input, output, session) {
                                         genome = "hg38",
                                         name = "CNV",
                                         background.panel = "#F0FFFF",
-                                        background.title = "#d65b00", 
-                                        lwd =  2, 
-                                        cex.title = 1.2)
+                                        background.title = "#d65b00") 
             cnv_track = HighlightTrack(list(gene_track, cnv_track),
                                        start = min(cnv_df$start),
                                        end = max(cnv_df$end))
@@ -235,16 +231,12 @@ server <- function(input, output, session) {
                                              genome = "hg38",
                                              name = "genes",
                                              transcriptAnnotation = "symbol",
-                                             background.title = "#8B5A2B", 
-                                             lwd = 3, 
-                                             cex.title = 1.2)
+                                             background.title = "#8B5A2B") 
             cnv_track = GeneRegionTrack(cnv_df, 
                                         genome = "hg38",
                                         name = "CNV",
                                         background.panel = "#F0FFFF",
-                                        background.title = "#d65b00", 
-                                        lwd =  2,
-                                        cex.title = 1.2)
+                                        background.title = "#d65b00") 
             cnv_track = HighlightTrack(list(interval_track, cnv_track),
                                        start = cnv_df$start,
                                        end = cnv_df$end)
@@ -301,7 +293,7 @@ server <- function(input, output, session) {
             mane_gr = sort(mane_gr)
             ol = findOverlaps(sv_gr, mane_gr)
             mane_ol = mane_gr[subjectHits(ol)]
-            symbols = unique(mane_ol$symbol)
+            symbols = sort(unique(mane_ol$symbol))
             if (length(symbols) <= 10) {
                 return(paste(symbols, collapse = ", "))
             } else {
@@ -463,10 +455,16 @@ server <- function(input, output, session) {
         cnv_info = cnv_df()[[2]]
         cnv_track = cnv_df()[[3]]
         ax <- GenomeAxisTrack()
-        output$gene_viz = renderPlot({plotTracks(list(ax, cnv_track), lwd = 3)})
-        output$cnv_info = renderTable({cnv_info},
+        output$gene_viz = renderPlot({plotTracks(list(ax, cnv_track))})
+        if (input$by_what == "gene") { 
+            output$cnv_info = renderTable({cnv_info},
                                        striped = TRUE, hover = TRUE, 
                                        bordered = TRUE, align = "c", digit = 1)
+        } else {
+            output$cnv_info = renderTable({cnv_info},
+                                       striped = TRUE, hover = TRUE, 
+                                       bordered = TRUE, align = "c", digit = 0)
+        }
     })
     
     # Display matching SVs if found.
@@ -479,13 +477,13 @@ server <- function(input, output, session) {
             gene_df = gene_df()[[1]]
             exon_number = gene_df()[[4]]
             req(input$exon_to >= input$exon_from && input$exon_to <= exon_number)
-            cnv_info = paste0(cnv_df$chrom[1], ":", 
+            cnv_data = paste0(cnv_df$chrom[1], ":", 
                           min(cnv_df$start), "-", max(cnv_df$end),
                           input$type)
         }
         if (input$by_what == "interval") {
             interval_df = cnv_df()[[4]]
-            cnv_info = paste0(cnv_df$chrom[1], ":", 
+            cnv_data = paste0(cnv_df$chrom[1], ":", 
                               cnv_df$start, "-", cnv_df$end,
                               input$type, " overlapping ", 
                               length(unique(interval_df$symbol)), " gene(s)"
@@ -497,7 +495,7 @@ server <- function(input, output, session) {
             output$error = renderUI({
                 HTML(paste0(
                     "<span style = 'color: green;'>", "Query variant - ", 
-                        cnv_info, "</span>",
+                        cnv_data, "</span>",
                     "<span style = 'color: red;'>No overlapping SV/CNV found.</span>"
                     )) 
             })
@@ -529,7 +527,7 @@ server <- function(input, output, session) {
             SV = paste0(as.character(sv_found$name), collapse = ", ")
             output$error = renderUI({
                 HTML(paste0(
-                    "<span style = 'color: green;'>Query variant - ", cnv_info, "</span>",
+                    "<span style = 'color: green;'>Query variant - ", cnv_data, "</span>",
                     "<span style = 'color: red;'>Wholely overlapping SVs:</span>",
                     "<span style = 'color: blue;'>", SV, "</span>"
                     ))
