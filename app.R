@@ -29,12 +29,12 @@ ui <- page_sidebar(
     ## Input
     sidebar = sidebar(
         width = 300,
-        p("hg38 MANE Select + Clinical", 
-          style = "color: green; font-weight: bold; font-size: 18px;"),
-        p("For clitical usage, verify the result", style = "color: red;"),
+        p(HTML("hg38 MANE Select + Clinical <br> coding transcripts"), 
+            style = "color: green; font-weight: bold; font-size: 18px;"),
+        p("For clitical usage, v1erify the result", style = "color: red;"),
         hr(),
-        p("e.g. PKD1 deletion of exons 22-30, or chr12:66767-389320", 
-                    style = "font-size: 1rem;"),
+        p("e.g. PKD1 exons 22-30 del, chr12:66767-389320 del", 
+            style = "font-size: 1rem;"),
         
         radioButtons("by_what", HTML("<b>Search by</b>"), 
                      choices = c("gene", "interval"),
@@ -42,7 +42,7 @@ ui <- page_sidebar(
                      inline = TRUE),
         textInput("gene", NULL,
                   value = "",
-                  placeholder = "PKD1/pkd1 OR chrN:start-end"),
+                  placeholder = "PKD1/pkd1 OR (chr)N:start-end"),
         div(
             class = "from-group shiny-input-container",
             shiny::tags$label("Exon if by gene", class = "control-label", 
@@ -64,10 +64,20 @@ ui <- page_sidebar(
                      choices = c("SV", "CNV"),
                      selected = "SV",
                      inline = TRUE),
-        radioButtons("limit", HTML("<b>Limit</b><br>by exon not first or last"), 
+        radioButtons("limit", HTML("<b>Limit if by gene</b><br>by exon not first or last"), 
                      choices = c("no", "yes"),
                      selected = "no", 
                      inline = TRUE),
+        sliderInput("min_overlap", HTML("<b>Minimum overlap</b><br>% of CNV size<br>"),
+                    min = 50, max = 100, step = 5, value = 80),
+        # radioButtons("type", HTML("<b>Type</b>"), 
+        #              choices = c("del", "dup"),
+        #              selected = "del",
+        #              inline = TRUE),
+        # radioButtons("variant", HTML("<b>Database</b>"), 
+        #              choices = c("SV", "CNV"),
+        #              selected = "SV",
+        #              inline = TRUE),
         div(style = "text-align: center;",
             actionButton("search", "Search", 
                          style = "background-color: #01774e;
@@ -161,12 +171,13 @@ server <- function(input, output, session) {
     ## Function to parse the interval input into a dataframe.
     get_coord = function(interval) {
         req(input$gene)
-        pattern = "([Cc]hr\\d+)[:\\s,-_]\\s*([\\d,]+)\\s*[:\\s,-]\\s*([\\d,]+)\\s*$"
+        pattern = "\\D*(\\d+)[:\\s,-_]\\s*([\\d,]+)\\s*[:\\s,-]\\s*([\\d,]+)\\s*$"
         matches <- regmatches(interval, regexec(pattern, interval, perl = TRUE))[[1]]
         req(nzchar(matches) != 0)
-        chrom = matches[2]
+        chrom = paste0("chr", matches[2])
         start <- as.numeric(gsub(",", "", matches[3]))
         end   <- as.numeric(gsub(",", "", matches[4]))
+        req(end > start)
         if (end >= start) {
             return(data.frame(chrom = chrom, start = start, end = end))
         } else {
@@ -197,7 +208,7 @@ server <- function(input, output, session) {
             cnv_info = data.frame(chrom = unique(cnv_df$chrom),
                                   start = cnv_start,
                                   end = cnv_end,
-                                  width = cnv_end - cnv_start + 1,
+                                  width = as.character(cnv_end - cnv_start + 1),
                                   "exon range" = exon_range,
                                   "CDS range" = cds_range,
                                   "CDS size" = cds_size,
@@ -217,16 +228,32 @@ server <- function(input, output, session) {
         
         if (input$by_what == "interval") {
             cnv_df = get_coord(input$gene)
-            cnv_info = cnv_df
+            req(cnv_df$end > cnv_df$start)
             # Get the genes this interval overlaps. 
             cnv_gr = makeGRangesFromDataFrame(cnv_df)
             mane = mane_tx[mane_tx$chrom == seqlevels(cnv_gr), ]
             mane_gr = makeGRangesFromDataFrame(mane, 
                                                keep.extra.columns = TRUE)
-            ol = findOverlaps(cnv_gr, mane_gr, )
-            genes = mane_gr[subjectHits(ol)]$symbol
+            ol = findOverlaps(cnv_gr, mane_gr)
+            genes = sort(unique(mane_gr[subjectHits(ol)]$symbol))
             interval_df = mane[mane$symbol %in% genes, ]
-            colnames(interval_df)[1] = "chrom"
+            # cnv_start_in_cds = any(cnv_df$start >= interval_df$start &
+            #                            cnv_df$start <= interval_df$end)
+            # cnv_end_in_cds = any(cnv_df$end >= interval_df$start &
+            #                          cnv_df$end <= interval_df$end)
+            # cds = interval_df$feature == "cds"
+            # interval_cds = interval_df[cds, ]
+            # cds_start = ifelse(cnv_start_in_cds, cnv_df$start, 
+            #                    min(interval_cds$start[interval_cds$start >= cnv_df$start]))
+            # cds_end = ifelse(cnv_end_in_cds, cnv_df$end, 
+            #                    max(interval_cds$end[interval_cds$end <= cnv_df$end]))
+            # cnv_info = cbind(cnv_df, cds_start = cds_start, cds_end = cds_end)
+            if (length(genes) <= 10) {
+                gene_list = paste(genes, collapse = ", ")
+            } else {
+                gene_list = paste(paste(genes[1:10], collapse = ", "), "and", 
+                                  length(genes)-10, "other MANE genes")}
+            cnv_info = cbind(cnv_df, genes = gene_list)
             interval_track = GeneRegionTrack(interval_df,
                                              genome = "hg38",
                                              name = "genes",
@@ -245,12 +272,13 @@ server <- function(input, output, session) {
     })
     
     ## Function to retrieve the matching variants.
-    get_match = function(cnv_df) {
+    get_match = function(cnv_df, min_overlap = input$min_overlap) {
         cnv_chrom = cnv_df$chrom[1]
         cnv_gr = GRanges(seqnames = cnv_df$chrom[1],
                          ranges = IRanges(min(cnv_df$start), max(cnv_df$end)),
                          strand = cnv_df$strand[1])
-        
+        minoverlap = floor(min_overlap * width(cnv_gr)/100)
+
         if (input$variant == "SV") {
             sv_file = paste0("rdsData/SV/gnomADsv_", cnv_chrom, ".rds")
             sv = readRDS(sv_file)
@@ -263,7 +291,7 @@ server <- function(input, output, session) {
         }
         sv_select_gr = makeGRangesFromDataFrame(sv_select, 
                                                 keep.extra.columns = TRUE)
-        sv_hits = findOverlaps(cnv_gr, sv_select_gr, type = "within")
+        sv_hits = findOverlaps(cnv_gr, sv_select_gr, minoverlap = minoverlap)
         hits_index = subjectHits(sv_hits)
         sv_found = sv_select_gr[hits_index]
 
@@ -299,7 +327,7 @@ server <- function(input, output, session) {
             } else {
                 n = length(symbols)
                 symbols = paste(symbols[1:10], collapse = ", ")
-                return(paste(symbols, ", and other", n-10, "MANE gene(s)"))
+                return(paste(symbols, ", and", n-10, "other MANE gene(s)"))
             }
         }
         
@@ -528,7 +556,7 @@ server <- function(input, output, session) {
             output$error = renderUI({
                 HTML(paste0(
                     "<span style = 'color: green;'>Query variant - ", cnv_data, "</span>",
-                    "<span style = 'color: red;'>Wholely overlapping SVs:</span>",
+                    "<span style = 'color: red;'>Overlapping SVs/CNVs:</span>",
                     "<span style = 'color: blue;'>", SV, "</span>"
                     ))
                                             
