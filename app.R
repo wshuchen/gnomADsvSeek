@@ -31,7 +31,7 @@ ui <- page_sidebar(
         width = 300,
         p(HTML("hg38 MANE Select + Clinical <br> coding transcripts"), 
             style = "color: green; font-weight: bold; font-size: 18px;"),
-        p("For clitical usage, v1erify the result", style = "color: red;"),
+        p("For clitical usage, verify the result", style = "color: red;"),
         hr(),
         p("e.g. PKD1 exons 22-30 del, chr12:66767-389320 del", 
             style = "font-size: 1rem;"),
