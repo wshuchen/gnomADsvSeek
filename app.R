@@ -3,19 +3,38 @@
 ## structure variant data (SVs and CNVs). Default to h38 genome.
 ## Use processed gnomAD SV (del and dup only) and CNV BED files 
 ## with selected columns and 1 added to start to be in GenBank style.
+## Suppose MANE and MANE Plus Clinical, hg38 v1.4, 19354 transcripts, plus
+## a subset of HGMD transcripts not in those data, 3234 transcripts. 
+## See related scripts for details. 
 
 library(shiny)
 library(bslib)
 library(DT)
 
+new_theme = bs_theme(version = 5, bootswatch = "journal") |>
+    bs_add_rules("
+                .tooltip {
+                  --bs-tooltip-max-width: 350px;
+                  --bs-tooltip-bg: #01774e;
+                  --bs-tooltip-color: #ffffff;
+                  --bs-tooltip-opacity: 0.95;
+                }
+                .tooltip-inner {
+                  width: 300px; 
+                  padding: 10px 10px; 
+                  font-size: 1rem;   
+                  text-align: left; 
+                }
+    ")
+
 ui <- page_sidebar(
-    theme = bs_theme(version = 5, bootswatch = "journal"),
+    theme = new_theme,
     title = tagList(
         shiny::tags$span(
             shiny::tags$i("gnomADsvSeek"), 
             style = "margin-left: 30px; font-weight: bold; font-size: 1.5rem;"),
         shiny::tags$span(
-            shiny::tags$i("Searching exon del/dup in gnomAD structure variant data"), 
+            shiny::tags$i("Search exon del/dup in gnomAD structure variant data"), 
             style = "margin-top: 5px; font-weight: bold; font-size: 1rem;"),
         shiny::tags$a(
             href = "https://github.com/wshuchen/gnomADsvSeek.git", "GitHub repository",
@@ -29,20 +48,26 @@ ui <- page_sidebar(
     ## Input
     sidebar = sidebar(
         width = 300,
-        p(HTML("hg38 MANE Select + Clinical <br> coding transcripts"), 
+        p(HTML("hg38 MANE select + HGMD <br> coding transcripts"), 
             style = "color: green; font-weight: bold; font-size: 18px;"),
         p("For clitical usage, verify the result", style = "color: red;"),
         hr(),
-        p("e.g. PKD1 exons 22-30 del, chr12:66767-389320 del", 
+        p(HTML("e.g. PKD1/NM_001009944.3<br>exons 22-30 del<br>or chr16:2099644-2104642 del"), 
             style = "font-size: 1rem;"),
         
-        radioButtons("by_what", HTML("<b>Search by</b>"), 
+        tooltip(
+            radioButtons("by_what", HTML("<b>Search by</b>"), 
                      choices = c("gene", "interval"),
                      selected = "gene",
                      inline = TRUE),
+            HTML(paste0("Accept gene name and transcipt ID; 
+            the later prefered for search because some genes have >= 2 transcripts.
+            <br>For interval, spaces are OK as delimits.")),
+            placement = "right"
+        ),
         textInput("gene", NULL,
                   value = "",
-                  placeholder = "PKD1/pkd1 OR (chr)N:start-end"),
+                  placeholder = "name/ID, OR (chr)N:start-end"),
         div(
             class = "from-group shiny-input-container",
             shiny::tags$label("Exon if by gene", class = "control-label", 
@@ -70,14 +95,6 @@ ui <- page_sidebar(
                      inline = TRUE),
         sliderInput("min_overlap", HTML("<b>Minimum overlap</b><br>% of CNV size<br>"),
                     min = 50, max = 100, step = 5, value = 80),
-        # radioButtons("type", HTML("<b>Type</b>"), 
-        #              choices = c("del", "dup"),
-        #              selected = "del",
-        #              inline = TRUE),
-        # radioButtons("variant", HTML("<b>Database</b>"), 
-        #              choices = c("SV", "CNV"),
-        #              selected = "SV",
-        #              inline = TRUE),
         div(style = "text-align: center;",
             actionButton("search", "Search", 
                          style = "background-color: #01774e;
@@ -94,19 +111,26 @@ ui <- page_sidebar(
                           "to hg19 for the matching variants"),
             checkboxInput("lift_over", NULL, value = FALSE)
         ),
-        div(
-            class = "from-group shiny-input-container",
-            shiny::tags$label("Methionine", class = "control-label;",
-                              style = "font-weight: bold;"),
-            shiny::tags$p(style = "margin-top: 2px; margin-bottom: 2px;",
-                          "retrieve Met positions"),
-            checkboxInput("get_met", NULL, value = FALSE)
+        tooltip(
+            div(
+                class = "from-group shiny-input-container",
+                shiny::tags$label("Methionine", class = "control-label;",
+                                  style = "font-weight: bold;"),
+                shiny::tags$p(style = "margin-top: 2px; margin-bottom: 2px;",
+                              "retrieve Met positions"),
+                checkboxInput("get_met", NULL, value = FALSE)),
+                "Output the longest protein only by gene name",
+                placement = "right"
         ),
-        div(style = "text-align: center;",
-            actionButton("clear", "Clear", 
+        tooltip(
+            div(style = "text-align: center;",
+                actionButton("clear", "Clear", 
                          style = "background-color: #01774e;
                                  font-size: 18px; color: white;
-                                 height: 40px; width: 120px;")
+                                 height: 40px; width: 120px;"),
+            ),
+            "Clear the output only; to clear all, remove input and refresh the page",
+            placement = "right"
         )
     ),
     
@@ -129,19 +153,27 @@ ui <- page_sidebar(
 server <- function(input, output, session) {
     library(Gviz)
     
-    ## MANE and MANE Plus Clinical exon table, v1.4, hg38.
-    mane_tx = readRDS("rdsData/mane1.4_transcript.rds")
+    ## MANE select + HGMD transcripts 
+    mane_tx = readRDS("rdsData/mane_hgmd_transcript.rds")
     
     ## Query gene data and view
     gene_df = reactive({
-        req(input$by_what == "gene")
-        gene_df = mane_tx[mane_tx$symbol == toupper(input$gene), ]
+        req(input$by_what == "gene" && nzchar(input$gene) != 0)
+        
+        if (grepl("NM|NR_", input$gene)) {  # transcript input
+            gene_df = mane_tx[mane_tx$transcript == input$gene, ]
+        } else {
+            gene_df = mane_tx[mane_tx$symbol == toupper(input$gene), ]
+        }
+        req(nrow(gene_df) >= 1)
+        
         rownames(gene_df) = NULL
         exon_number = as.numeric(gene_df$exon[grep("[0-9.*]", gene_df$exon)])
         exon_number = exon_number[length(exon_number)]
         gene_start = min(gene_df$start)
         gene_end = max(gene_df$end)
         gene_length = sum(gene_df$width)
+        
         # Add a link to UCSC Genome Browser.
         ucsc_url = paste0(
             "https://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38",
@@ -152,16 +184,16 @@ server <- function(input, output, session) {
             "&hgsid=4149631675_9ZnuSDlSkew8PA8AhS3LI7gC298D"
         )
         ucsc_link = paste0('<a href=', ucsc_url, ' target="_blank"', '>(UCSC)</a>')
-        gene_info = paste(toupper(input$gene), 
+        
+        gene_info = paste(gene_df$symbol[1], 
                           paste0(gene_df$chrom[1], ":",
                                  gene_start, "-", gene_end),
                           gene_df$transcript[1], 
                           exon_number, "exons", 
                           paste0(gene_length, " bp"))
-        
         gene_track = GeneRegionTrack(gene_df, 
                                      genome = "hg38",
-                                     name = toupper(input$gene),
+                                     name = gene_df$symbol[1],
                                      #fill = "#005283", # UCSC color
                                      background.title = "#8B5A2B")
         list(gene_df, gene_info, gene_track, exon_number, ucsc_link)
@@ -190,7 +222,11 @@ server <- function(input, output, session) {
         if (input$by_what == "gene") {
             exon_from = input$exon_from
             exon_to = input$exon_to
+            req(!is.na(exon_from) && !is.na(exon_to && exon_to >= exon_from))
             gene_df = gene_df()[[1]]
+            # *_alt and *_fix chromosome are excluded from searching 
+            # due to coordinate issue.
+            req(!grepl("_alt|fix", gene_df$chrom)) 
             gene_track = gene_df()[[3]]
             
             cnv_df = gene_df[gene_df$exon %in% exon_from:exon_to, ]
@@ -227,7 +263,7 @@ server <- function(input, output, session) {
             } 
         
         if (input$by_what == "interval") {
-            cnv_df = get_coord(input$gene)
+            cnv_df = get_coord(input$gene) # interval input
             req(cnv_df$end > cnv_df$start)
             # Get the genes this interval overlaps. 
             cnv_gr = makeGRangesFromDataFrame(cnv_df)
@@ -237,22 +273,15 @@ server <- function(input, output, session) {
             ol = findOverlaps(cnv_gr, mane_gr)
             genes = sort(unique(mane_gr[subjectHits(ol)]$symbol))
             interval_df = mane[mane$symbol %in% genes, ]
-            # cnv_start_in_cds = any(cnv_df$start >= interval_df$start &
-            #                            cnv_df$start <= interval_df$end)
-            # cnv_end_in_cds = any(cnv_df$end >= interval_df$start &
-            #                          cnv_df$end <= interval_df$end)
-            # cds = interval_df$feature == "cds"
-            # interval_cds = interval_df[cds, ]
-            # cds_start = ifelse(cnv_start_in_cds, cnv_df$start, 
-            #                    min(interval_cds$start[interval_cds$start >= cnv_df$start]))
-            # cds_end = ifelse(cnv_end_in_cds, cnv_df$end, 
-            #                    max(interval_cds$end[interval_cds$end <= cnv_df$end]))
-            # cnv_info = cbind(cnv_df, cds_start = cds_start, cds_end = cds_end)
-            if (length(genes) <= 10) {
-                gene_list = paste(genes, collapse = ", ")
+            if (length(genes) == 0) {
+                gene_list = paste("no MANE gene or intronic")
             } else {
-                gene_list = paste(paste(genes[1:10], collapse = ", "), "and", 
-                                  length(genes)-10, "other MANE genes")}
+                if (length(genes) <= 10) {
+                    gene_list = paste(genes, collapse = ", ")
+                } else {
+                    gene_list = paste(paste(genes[1:10], collapse = ", "), "and", 
+                                      length(genes)-10, "other MANE genes")}
+            }
             cnv_info = cbind(cnv_df, genes = gene_list)
             interval_track = GeneRegionTrack(interval_df,
                                              genome = "hg38",
@@ -274,6 +303,7 @@ server <- function(input, output, session) {
     ## Function to retrieve the matching variants.
     get_match = function(cnv_df, min_overlap = input$min_overlap) {
         cnv_chrom = cnv_df$chrom[1]
+        req(!grepl("_alt|fix", cnv_chrom))
         cnv_gr = GRanges(seqnames = cnv_df$chrom[1],
                          ranges = IRanges(min(cnv_df$start), max(cnv_df$end)),
                          strand = cnv_df$strand[1])
@@ -399,7 +429,6 @@ server <- function(input, output, session) {
              ylim = c(0.5, rows + 0.8), 
              xaxt = "n", yaxt = "n", xlab = "", ylab = "", 
              bty = "n", asp = 1, yaxs = "i", xaxs = "i")
-        
         text(ticks, rows + 1.0, labels = ticks, font = 2, cex = 1.0, xpd = TRUE)
         
         for (r in 1:rows) {
@@ -435,7 +464,9 @@ server <- function(input, output, session) {
     ## Outputs
     # Display gene info when gene name is provided.
     observe({
-        req(input$by_what == "gene" && toupper(input$gene) %in% mane_tx$symbol)
+        req(input$by_what == "gene" && 
+                (toupper(input$gene) %in% mane_tx$symbol || 
+                     input$gene %in% mane_tx$transcript))
         gene_df = gene_df()[[1]]
         gene_info = gene_df()[[2]]
         gene_track = gene_df()[[3]]
@@ -497,12 +528,22 @@ server <- function(input, output, session) {
     
     # Display matching SVs if found.
     observeEvent(c(input$search, input$zoom), {
+        if (input$by_what == "gene") {
+            gene_df = gene_df()[[1]]
+            chrom = gene_df$chrom[1]
+            if (grepl("_alt|fix", chrom)) {
+                output$error = renderUI({
+                    p("CNV search on a *_alt or *_fix chromosome is not supported.",
+                      style = "color: red;")
+                })
+            }
+        }
+        
         cnv_df = cnv_df()[[1]]
         cnv_track = cnv_df()[[3]]
         ax <- GenomeAxisTrack()
         
         if (input$by_what == "gene") {
-            gene_df = gene_df()[[1]]
             exon_number = gene_df()[[4]]
             req(input$exon_to >= input$exon_from && input$exon_to <= exon_number)
             cnv_data = paste0(cnv_df$chrom[1], ":", 
@@ -559,7 +600,6 @@ server <- function(input, output, session) {
                     "<span style = 'color: red;'>Overlapping SVs/CNVs:</span>",
                     "<span style = 'color: blue;'>", SV, "</span>"
                     ))
-                                            
             })
             
             # Display in the scale of longest interval,
@@ -638,7 +678,6 @@ server <- function(input, output, session) {
     observeEvent(input$lift_over, {
         req(input$lift_over)
     	library(rtracklayer)
-        
         # Chain file for hg38 to hg19 coordinate liftover.
         hg38_19 = readRDS("rdsData/hg38ToHg19.over.chain.rds")
         

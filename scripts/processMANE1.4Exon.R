@@ -54,6 +54,9 @@ length(not_fa_symbol) # 19276
 sum(fa_symbol %in% not_fa_symbol) # 0, no duplicate
 
 ## Remove *_fix|alt. The file preserves the exon order for a gene. 
+## Note: this may result in coordinate issue, but let's leave it as is
+## for now. New update preserves the name but excludes them from 
+## CNV search and no longer use this exon file. 
 mane1.4_exon_df$seqnames = gsub("_.*", "", mane1.4_exon_df$seqnames)
 length(unique(mane1.4_exon_df$seqnames)) # 24
 
