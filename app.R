@@ -444,11 +444,18 @@ server <- function(input, output, session) {
     }
     
     get_met = reactive({
+        library(Biostrings)
+        library(refseqR)
         mane_sum = readRDS("rdsData/mane1.4_summary.rds")
         gene_df = gene_df()[[1]]
         
-        transcript = unique(gene_df$transcript)[1] 
-        protein = mane_sum[mane_sum$transcript == transcript, ]$protein
+        protein = ""
+        transcript = unique(gene_df$transcript)[1]
+        if (transcript %in% mane_sum$transcript) {
+          protein = mane_sum[mane_sum$transcript == transcript, ]$protein
+        } else {
+          protein = refseq_RNA2protein(transcript)
+        }
         seq <- refseq_AAseq(protein)[[1]]
         met_pos = matchPattern("M", seq)
         met_pos = as.data.frame(met_pos)$start
@@ -714,9 +721,6 @@ server <- function(input, output, session) {
     
     # Show methionine position for the corresponding protein sequence.
     observeEvent(input$get_met, {
-        req(input$get_met)
-        library(Biostrings)
-        library(refseqR)
         req(input$gene)
         req(input$get_met)
         
