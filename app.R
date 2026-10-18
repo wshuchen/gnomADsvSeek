@@ -203,10 +203,10 @@ server <- function(input, output, session) {
     ## Function to parse the interval input into a dataframe.
     get_coord = function(interval) {
         req(input$gene)
-        pattern = "\\D*(\\d+)[:\\s,-_]\\s*([\\d,]+)\\s*[:\\s,-]\\s*([\\d,]+)\\s*$"
+        pattern = "\\D*([\\dXxYy]+)[\\s:,-]+([\\d,]+)[\\s:,-]+([\\d,]+)"
         matches <- regmatches(interval, regexec(pattern, interval, perl = TRUE))[[1]]
         req(nzchar(matches) != 0)
-        chrom = paste0("chr", matches[2])
+        chrom = paste0("chr", toupper(matches[2]))
         start <- as.numeric(gsub(",", "", matches[3]))
         end   <- as.numeric(gsub(",", "", matches[4]))
         req(end > start)
